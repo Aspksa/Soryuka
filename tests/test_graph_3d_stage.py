@@ -59,6 +59,18 @@ class Real3DRouteTests(unittest.TestCase):
                          {"mem:"+left["id"],"mem:"+right["id"]})
         self.assertFalse(any("body" in e for e in events))
 
+    def test_audit_phases_keep_numeric_order_past_nine_records(self):
+        for index in range(12):
+            self.store.add_memory("fact","Проверенная запись "+str(index),True)
+        before=build_graph(self.store)["cursor"]
+        self.engine.chat("Какой факт известен?",intent="technical")
+        items=activity(self.store,before["audit"],before["message"])["items"]
+        start_idx=next(i for i,e in enumerate(items)
+                       if e.get("phase")=="request_started")
+        finish_idx=next(i for i,e in enumerate(items)
+                        if e.get("phase")=="response_saved")
+        self.assertLess(start_idx,finish_idx)
+
     def test_without_chat_there_is_no_invented_answer_route(self):
         self.store.add_memory("fact","Реальная запись",True)
         events=activity(self.store,0,0)["items"]
