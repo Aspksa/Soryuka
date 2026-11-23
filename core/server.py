@@ -11,10 +11,12 @@ try:
     from .soul_engine import SoryukaEngine,CloudConfigError,CloudRequestError
     from .soul_store import SoulStore,StoreError
     from .growth_v5 import BackgroundLearningLoop
+    from .mirror_graph import build_graph, activity
 except ImportError:
     from soul_engine import SoryukaEngine,CloudConfigError,CloudRequestError
     from soul_store import SoulStore,StoreError
     from growth_v5 import BackgroundLearningLoop
+    from mirror_graph import build_graph, activity
 
 MAX_BODY=32768
 
@@ -97,6 +99,12 @@ class AppHandler(BaseHTTPRequestHandler):
                     "database":"ready","external_calls_automatic":False}
         if path=="/api/profile":
             return engine.profile()
+        if path=="/api/mirror/graph":
+            return build_graph(store)
+        if path=="/api/mirror/activity":
+            cursor_a=params.get("audit_after",["0"])[0]
+            cursor_m=params.get("message_after",["0"])[0]
+            return activity(store,cursor_a,cursor_m)
         if path=="/api/sessions":
             return {"items":store.sessions()}
         if path=="/api/history":
