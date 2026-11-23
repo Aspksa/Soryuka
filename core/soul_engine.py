@@ -170,8 +170,9 @@ class SoryukaEngine:
         sid=self.store.ensure_session(session_id)
         event=event_data(intent)
         history=self.store.history(sid,12)
-        found=self.v4.memory_index(text,6)
-        memories=found if found else self.store.list_memories(6)
+        found=self.v4.memory_index(text,12)
+        trusted=[row for row in found if row.get("provenance")=="owner_confirmed"][:6]
+        memories=trusted if trusted else self.v4.confirmed_memories(6)
         relationship=self.v4.relationship_context(3) if intent in ("affection","greeting","compliment","creative") else {}
         extra={"relationship":relationship}
         if intent=="compliment":
