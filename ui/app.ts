@@ -108,6 +108,19 @@ async function loadMetrics(){
     await api('/feedback/delete',{id:row.id});await loadMetrics();
   }}]));
 }
+async function loadRecommendations(){
+  const d=await api('/recommendations');
+  renderItems('recommendations',d.items,row=>textItem(row.title,row.skill+' · '+row.reason+' · Проверка: '+row.criterion,[{
+    label:'Предложить эту цель',run:async()=>{
+      await api('/goal',{skill:row.skill,title:row.title,criterion:row.criterion});
+      await loadGoals();await loadRecommendations();
+    }
+  }]));
+}
+async function loadDiary(){
+  const d=await api('/diary');
+  renderItems('diary',d.items.slice(0,15),row=>textItem(row.action,row.created_at+' · '+row.subject));
+}
 async function loadProposals(){
   const d=await api('/proposals');
   renderItems('proposals',d.items,row=>{
@@ -159,6 +172,10 @@ function setupForms(){
   bindForm('memory-form',async()=>{
     await api('/memory',{kind:byId('memory-kind').value,text:byId('memory-text').value,confirmed:byId('memory-confirm').checked});
     await loadMemories();
+  });
+  byId('suggest-goals').addEventListener('click',async()=>{
+    try{await loadRecommendations();notify('Предложения рассчитаны только из твоих оценок');}
+    catch(e){notify(e.message,true);}
   });
   bindForm('goal-form',async()=>{
     await api('/goal',{skill:byId('goal-skill').value,title:byId('goal-title').value,criterion:byId('goal-criterion').value});
@@ -223,7 +240,7 @@ async function start(){
     byId('status-dot').classList.toggle('online',health.configured);
     notify(health.configured?'Cloud.ru подключён':'Cloud.ru не настроен · см. README');
     await loadSessions();
-    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline()]);
+    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary()]);
   }catch(e){notify(e.message,true);}
 }
 start();
