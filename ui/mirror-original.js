@@ -12,6 +12,7 @@ import {
   GRAPHICS_DEFAULTS, GRAPHICS_STORAGE_KEY, normalizeGraphics,
   readGraphics, saveGraphics, resetGraphics
 } from './graphics-settings.js';
+import {normalizeGraph,graphRoute,neighborsFor,seedNewNodes,linkId,GRAPH_LIMITS} from './graph-logic.js';
 
 // Browser-local visual preferences; never written to SQLite or sent to Cloud.ru.
 function getGraphicsStorage(){
@@ -23,33 +24,20 @@ let graphics=readGraphics(graphicsStorage);
 let animationClock=0;
 let previousFrame=0;
 let physicsProgress=0;
+let quality=1;
+let frameCount=0;
+let frameWindow=0;
+let fps=60;
+let graphicLost=false;
+let lastLodUpdate=0;
+let visibleNodeCount=0;
+let selectedNodeId=null;
+const recentMotionTrails=[];
 
 /** Adapt Soryuka's actual SQLite graph to the Soryuka 3D renderer.
  * No fabricated memories or private Cloud.ru keys in browser code.
  */
-function adaptGraph(raw){
-  if(!raw || !Array.isArray(raw.nodes) || !Array.isArray(raw.links))throw new Error('Неверные данные графа');
-  const nodes=raw.nodes.slice(0,1450).map(item=>{
-    const type=item.kind==='character'?'core':item.kind==='cluster'?'category':
-      item.kind==='system'?'core':'file';
-    return {id:String(item.id),label:String(item.name||''),category:String(item.category||'memory'),
-      type,size:Number(item.size||4),kind:item.kind,status:item.status,
-      description:item.detail||'',created_at:item.created_at||''};
-  });
-  const allowed=new Set(nodes.map(x=>x.id));
-  const edges=raw.links.filter(x=>allowed.has(x.source)&&allowed.has(x.target)).slice(0,2500).map(x=>({
-    source:String(x.source),target:String(x.target),
-    type:x.relation==='category'?'structural':
-         ['contains','message','episode','canon','skill'].includes(x.relation)?'contains':'references',
-    relation:x.relation
-  }));
-  const colors={
-    core:'#eacfa3',memory:'#4488ff',dialog:'#7288fc',story:'#f2a5ce',
-    learning:'#a855f7',growth:'#22c55e',skill:'#e4a960'
-  };
-  for(const group of (raw.categories||[]))colors[group.id]=group.color||colors[group.id]||'#6a78b1';
-  return {nodes,edges,colors,source:'local_sqlite'};
-}
+function adaptGraph(raw){return normalizeGraph(raw);}
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -107,6 +95,15 @@ renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setClearColor(0x0a0a0f);
 container.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost',event=>{
+  event.preventDefault();
+  graphicLost=true;
+  window.__soryukaGraphicsError?.('Драйвер или браузер потерял контекст WebGL. Нажми «Повторить запуск» либо открой чат.');
+});
+renderer.domElement.addEventListener('webglcontextrestored',()=>{
+  // Material/geometry resources need a clean reinitialization after device loss.
+  location.reload();
+});
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x0a0a0f, graphics.fog);
@@ -136,6 +133,7 @@ function applyGraphics(){
   ambientLight.intensity=3.5*graphics.light;
   dirLight1.intensity=0.8*graphics.light;
   dirLight2.intensity=0.3*graphics.light;
+  if(typeof applyAtmosphere==='function' && typeof atmosphere!=='undefined')applyAtmosphere();
 }
 function showGraphicsValues(){
   const formats={
@@ -267,6 +265,45 @@ function createGlowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 const glowTexture = createGlowTexture();
+
+// Three translucent depth bands, no external textures or new dependencies.
+// These are purely decorative atmospheric particles, never pretend memory nodes.
+function buildAtmosphere(){
+  const layers=[];
+  const palette=['#28314a','#3b3650','#564731'];
+  for(let layer=0;layer<3;layer++){
+    const count=[120,105,85][layer];
+    const position=new Float32Array(count*3);
+    for(let i=0;i<count;i++){
+      // Deterministic geometry so event updates never randomly reshuffle the sky.
+      const phase=(i*2.3999632297+layer*0.78);
+      const radius=160+(i%27)*26+layer*110;
+      position[i*3]=Math.cos(phase)*radius;
+      position[i*3+1]=Math.sin(phase)*radius*0.72;
+      position[i*3+2]=Math.sin(i*0.41+layer)*350;
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(position,3));
+    const material=new THREE.PointsMaterial({
+      color:palette[layer],size:[75,100,145][layer],
+      map:glowTexture,transparent:true,opacity:[.055,.042,.028][layer],
+      blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true,fog:true
+    });
+    const layerMesh=new THREE.Points(geo,material);
+    layerMesh.name='SoryukaAtmosphere'+layer;
+    scene.add(layerMesh);
+    layers.push(layerMesh);
+  }
+  return layers;
+}
+const atmosphere=buildAtmosphere();
+function applyAtmosphere(){
+  const densityBoost=Math.min(2,0.55+graphics.fog/0.0008*0.45);
+  for(let i=0;i<atmosphere.length;i++){
+    atmosphere[i].material.opacity=[.055,.042,.028][i]*densityBoost*quality;
+  }
+}
+applyAtmosphere();
 
 function makeLabel(text, hexColor) {
   const canvas = document.createElement('canvas');
