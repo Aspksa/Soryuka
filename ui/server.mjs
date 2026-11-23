@@ -13,10 +13,11 @@ if(!token){ console.error('SORYUKA_API_TOKEN missing: run launch.py'); process.e
 const selfOrigin='http://127.0.0.1:'+uiPort;
 const staticFiles=new Map([
   ['/','index.html'],['/index.html','index.html'],
-  ['/mirror.css','mirror.css'],['/mirror.js','mirror.js'],
   ['/console','console.html'],['/console.html','console.html'],
   ['/style.css','style.css'],['/app.js','app.js'],
   ['/mirror-original.js','mirror-original.js'],
+  ['/mirror-boot.js','mirror-boot.js'],
+  ['/graph-logic.js','graph-logic.js'],
   ['/graphics-settings.js','graphics-settings.js'],
   ['/vendor/three.module.js','node_modules/three/build/three.module.js'],
   ['/vendor/three-addons/controls/OrbitControls.js','node_modules/three/examples/jsm/controls/OrbitControls.js'],
@@ -125,7 +126,10 @@ function eventForOriginal(item){
   const map={read:'read',write:'write',delete:'delete',link:'link',learn:'learn',growth:'growth'};
   const type=map[item.kind]||'read',targets=Array.isArray(item.targets)?item.targets.slice(0,10):[];
   return {
-    type,origin_kind:item.kind,
+    type,origin_kind:item.kind,source:item.source,
+    phase:['retrieval','response'].includes(item.phase)?item.phase:null,
+    session_node:typeof item.session_node==='string'?item.session_node:null,
+    targets,
     path:targets[0]||'group:'+(item.category||'memory'),
     timestamp:item.at,
     query:'', // Never put private chat text into feed.

@@ -12,6 +12,7 @@ import {
   GRAPHICS_DEFAULTS, GRAPHICS_STORAGE_KEY, normalizeGraphics,
   readGraphics, saveGraphics, resetGraphics
 } from './graphics-settings.js';
+import {normalizeGraph,graphRoute,neighborsFor,seedNewNodes,linkId,GRAPH_LIMITS} from './graph-logic.js';
 
 // Browser-local visual preferences; never written to SQLite or sent to Cloud.ru.
 function getGraphicsStorage(){
@@ -23,33 +24,21 @@ let graphics=readGraphics(graphicsStorage);
 let animationClock=0;
 let previousFrame=0;
 let physicsProgress=0;
+let quality=1;
+let frameCount=0;
+let frameWindow=0;
+let fps=60;
+let graphicLost=false;
+let lastLodUpdate=0;
+let visibleNodeCount=0;
+let atmosphere=[];
+let selectedNodeId=null;
+const recentMotionTrails=[];
 
 /** Adapt Soryuka's actual SQLite graph to the Soryuka 3D renderer.
  * No fabricated memories or private Cloud.ru keys in browser code.
  */
-function adaptGraph(raw){
-  if(!raw || !Array.isArray(raw.nodes) || !Array.isArray(raw.links))throw new Error('Неверные данные графа');
-  const nodes=raw.nodes.slice(0,1450).map(item=>{
-    const type=item.kind==='character'?'core':item.kind==='cluster'?'category':
-      item.kind==='system'?'core':'file';
-    return {id:String(item.id),label:String(item.name||''),category:String(item.category||'memory'),
-      type,size:Number(item.size||4),kind:item.kind,status:item.status,
-      description:item.detail||'',created_at:item.created_at||''};
-  });
-  const allowed=new Set(nodes.map(x=>x.id));
-  const edges=raw.links.filter(x=>allowed.has(x.source)&&allowed.has(x.target)).slice(0,2500).map(x=>({
-    source:String(x.source),target:String(x.target),
-    type:x.relation==='category'?'structural':
-         ['contains','message','episode','canon','skill'].includes(x.relation)?'contains':'references',
-    relation:x.relation
-  }));
-  const colors={
-    core:'#eacfa3',memory:'#4488ff',dialog:'#7288fc',story:'#f2a5ce',
-    learning:'#a855f7',growth:'#22c55e',skill:'#e4a960'
-  };
-  for(const group of (raw.categories||[]))colors[group.id]=group.color||colors[group.id]||'#6a78b1';
-  return {nodes,edges,colors,source:'local_sqlite'};
-}
+function adaptGraph(raw){return normalizeGraph(raw);}
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -90,7 +79,22 @@ let debugMode = false;
 let lastDebugNode = null;
 let showLabels = false;
 let refsHighlighted = false;
-const activeAnimations = [];
+const activeAnimations=[];
+const transientEffects=new Set();
+function trackTransient(dispose){
+  let active=true;
+  const clean=()=>{
+    if(!active)return;
+    active=false;
+    transientEffects.delete(clean);
+    dispose();
+  };
+  transientEffects.add(clean);
+  return clean;
+}
+function clearTransientEffects(){
+  for(const clean of [...transientEffects])clean();
+}
 
 let edgeMesh, edgeGeo;
 let edgePositions, edgeColors, edgeBaseColors, edgeColorAttr;
@@ -107,6 +111,15 @@ renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setClearColor(0x0a0a0f);
 container.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost',event=>{
+  event.preventDefault();
+  graphicLost=true;
+  window.__soryukaGraphicsError?.('Драйвер или браузер потерял контекст WebGL. Нажми «Повторить запуск» либо открой чат.');
+});
+renderer.domElement.addEventListener('webglcontextrestored',()=>{
+  // Material/geometry resources need a clean reinitialization after device loss.
+  location.reload();
+});
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x0a0a0f, graphics.fog);
@@ -136,6 +149,7 @@ function applyGraphics(){
   ambientLight.intensity=3.5*graphics.light;
   dirLight1.intensity=0.8*graphics.light;
   dirLight2.intensity=0.3*graphics.light;
+  if(atmosphere.length)applyAtmosphere();
 }
 function showGraphicsValues(){
   const formats={
@@ -268,6 +282,45 @@ function createGlowTexture() {
 }
 const glowTexture = createGlowTexture();
 
+// Three translucent depth bands, no external textures or new dependencies.
+// These are purely decorative atmospheric particles, never pretend memory nodes.
+function buildAtmosphere(){
+  const layers=[];
+  const palette=['#28314a','#3b3650','#564731'];
+  for(let layer=0;layer<3;layer++){
+    const count=[120,105,85][layer];
+    const position=new Float32Array(count*3);
+    for(let i=0;i<count;i++){
+      // Deterministic geometry so event updates never randomly reshuffle the sky.
+      const phase=(i*2.3999632297+layer*0.78);
+      const radius=160+(i%27)*26+layer*110;
+      position[i*3]=Math.cos(phase)*radius;
+      position[i*3+1]=Math.sin(phase)*radius*0.72;
+      position[i*3+2]=Math.sin(i*0.41+layer)*350;
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(position,3));
+    const material=new THREE.PointsMaterial({
+      color:palette[layer],size:[75,100,145][layer],
+      map:glowTexture,transparent:true,opacity:[.055,.042,.028][layer],
+      blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true,fog:true
+    });
+    const layerMesh=new THREE.Points(geo,material);
+    layerMesh.name='SoryukaAtmosphere'+layer;
+    scene.add(layerMesh);
+    layers.push(layerMesh);
+  }
+  return layers;
+}
+atmosphere=buildAtmosphere();
+function applyAtmosphere(){
+  const densityBoost=Math.min(2,0.55+graphics.fog/0.0008*0.45);
+  for(let i=0;i<atmosphere.length;i++){
+    atmosphere[i].material.opacity=[.055,.042,.028][i]*densityBoost*quality;
+  }
+}
+applyAtmosphere();
+
 function makeLabel(text, hexColor) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -363,6 +416,9 @@ function findNodeById(targetPath) {
 // ═══════════════════════════════════════
 
 function clearGraph() {
+  // A graph refresh must not leak old point lights, sprites or GPU buffers.
+  clearTransientEffects();
+  activeAnimations.length=0;
   if (simulation) simulation.stop();
   if (edgeMesh) { scene.remove(edgeMesh); edgeGeo.dispose(); edgeMesh.material.dispose(); }
   for (const info of Object.values(nodeMeshes)) {
@@ -379,9 +435,34 @@ function clearGraph() {
 }
 
 function buildGraph(data) {
+  const {nodes,edges,colors}=data;
+  const previous=nodesData||[];
+  const existingIds=new Set(previous.map(n=>n.id));
+  // Do not reset physics, selection and in-flight pulses for unchanged topology.
+  const sameNodes=previous.length===nodes.length && nodes.every((n,i)=>previous[i]?.id===n.id);
+  const sameEdges=edgesData?.length===edges.length && edges.every((e,i)=>
+    linkId(edgesData[i].source)===e.source &&
+    linkId(edgesData[i].target)===e.target &&
+    edgesData[i].relation===e.relation);
+  if(sameNodes&&sameEdges){
+    for(const update of nodes){
+      const current=nodeMap[update.id];
+      if(current){
+        current.label=update.label;
+        current.status=update.status;
+        current.description=update.description;
+      }
+    }
+    return;
+  }
+  // Persist the spatial layout of existing real records when the memory galaxy grows.
+  seedNewNodes(previous,nodes)(edges);
   clearGraph();
-  const { nodes, edges, colors } = data;
-  nodesData = nodes; edgesData = edges; colorsData = colors;
+  nodesData=nodes;edgesData=edges;colorsData=colors;
+  if(selectedNodeId&&!nodes.some(n=>n.id===selectedNodeId)){
+    selectedNodeId=null;
+    document.getElementById('node-card').hidden=true;
+  }
 
   nodeMap = {};
   nodes.forEach(n => { nodeMap[n.id] = n; });
@@ -393,13 +474,16 @@ function buildGraph(data) {
   // --- Force Simulation (d3-force-3d) ---
   simulation = d3.forceSimulation(nodes)
     .numDimensions(3)
-    .force('link', d3.forceLink(edges).id(d => d.id)
-      .distance(d => d.type === 'structural' ? 80 : d.type === 'contains' ? 50 : 120)
-      .strength(d => d.type === 'structural' ? 0.8 : d.type === 'contains' ? 0.3 : 0.15))
+    .force('link', d3.forceLink(edges).id(d=>d.id)
+      .distance(d=>(d.type==='structural'?90:d.type==='contains'?64:130)
+        +(d.source.size+d.target.size)*NODE_SCALE*2)
+      .strength(d=>d.type==='structural'?0.8:d.type==='contains'?0.38:0.12))
     .force('charge', d3.forceManyBody().strength(d =>
-      d.type === 'category' ? -400 : d.type === 'core' ? -300 : -80))
+      d.type==='category'?-380:d.type==='core'?-300:nodes.length>600?-60:-80))
     .force('center', d3.forceCenter(0, 0, 0))
-    .force('collision', d3.forceCollide().radius(d => d.size * NODE_SCALE + 2))
+    .force('collision', d3.forceCollide()
+      .radius(d=>d.size*NODE_SCALE+Math.max(3,Math.min(8,5+nodes.length/300)))
+      .strength(0.95).iterations(nodes.length>500?1:2))
     .force('x', d3.forceX(0).strength(0.03))
     .force('y', d3.forceY(0).strength(0.03))
     .force('z', d3.forceZ(0).strength(0.03));
@@ -492,7 +576,16 @@ function buildGraph(data) {
   }
 
   // --- Legend ---
-  buildLegend(colors, nodes);
+  buildLegend(colors,nodes);
+  updatePositions();
+  updateLod(true);
+  if(existingIds.size && nodes.length>existingIds.size){
+    const added=nodes.filter(n=>!existingIds.has(n.id));
+    document.getElementById('answer-stage').textContent=
+      'Карта памяти выросла: '+added.length+' новых подтверждённых записей.';
+    for(const n of added.slice(0,5))pulseNode(n.id,colors[n.category]||'#d5b47c',2000);
+  }
+  if(selectedNodeId && nodeMap[selectedNodeId])renderNodeCard(selectedNodeId);
 }
 
 function buildLegend(colors, nodes) {
@@ -577,7 +670,90 @@ function updatePositions() {
 // Interaction (Raycaster, Hover, Click)
 // ═══════════════════════════════════════
 
-const tooltip = document.getElementById('tooltip');
+const tooltip=document.getElementById('tooltip');
+let lastPickAt=0;
+const nodeCard=document.getElementById('node-card');
+const nodeCardClose=document.getElementById('node-card-close');
+const RELATION_TITLES={
+  contains:'Содержит',category:'В разделе',canon:'Канон',message:'Диалог',
+  episode:'Эпизод',skill:'Навык',related:'Связано',cause_claim:'Причинная гипотеза'
+};
+const STATUS_TITLES={
+  owner_confirmed:'Подтверждено владельцем',
+  owner_approved:'Одобрено владельцем',
+  owner_disputed:'Оспорено владельцем · требует проверки',
+  local:'Локальная запись',real_file:'Файл канона',
+  canon:'Защищённое ядро',fiction:'Художественное событие'
+};
+function highlightConnections(nodeId){
+  const connected=nodeId?getConnectedIds(nodeId):new Set();
+  for(const [id,info] of Object.entries(nodeMeshes)){
+    info.mesh.material.color.copy(info.baseColor);
+    if(nodeId&&id!==nodeId&&!connected.has(id))
+      info.mesh.material.color.multiplyScalar(0.12);
+  }
+  const indexes=new Set((nodeEdgeLookup[nodeId]||[]).map(e=>e.idx));
+  for(let i=0;i<(edgesData||[]).length;i++){
+    const gain=!nodeId?1:indexes.has(i)?2.3:0.12;
+    const j=i*6;
+    for(let k=0;k<6;k++)edgeColors[j+k]=edgeBaseColors[j+k]*gain;
+  }
+  if(edgeColorAttr)edgeColorAttr.needsUpdate=true;
+}
+function renderNodeCard(id){
+  const node=nodeMap[id];
+  if(!node)return;
+  nodeCard.hidden=false;
+  document.getElementById('node-card-heading').textContent=node.label||'Запись Сорюки';
+  document.getElementById('node-card-type').textContent=
+    (CATEGORY_TITLES[node.category]||node.category)+' · '+
+    (NODE_TYPE_TITLES[node.type]||node.kind||'Запись');
+  document.getElementById('node-card-status').textContent=
+    STATUS_TITLES[node.status]||node.status||'Только локальные данные SQLite';
+  document.getElementById('node-card-detail').textContent=
+    node.description||'Дополнительных сведений в этой записи нет.';
+  const list=document.getElementById('node-card-links');
+  list.replaceChildren();
+  const neighbors=neighborsFor(id,edgesData||[]);
+  if(!neighbors.length){
+    const li=document.createElement('li');
+    li.textContent='Подтверждённых связей пока нет.';
+    list.appendChild(li);
+  }
+  for(const {id:other,relation} of neighbors){
+    const linked=nodeMap[other];
+    if(!linked)continue;
+    const li=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=(RELATION_TITLES[relation]||relation)+': '+(linked.label||other);
+    button.addEventListener('click',()=>openNodeCard(other));
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  const source=id.startsWith('canon:')?'Файл канона Сорюки':'Запись локального графа SQLite';
+  document.getElementById('node-card-source').textContent=
+    source+(node.created_at?' · '+node.created_at:'');
+}
+function openNodeCard(id){
+  if(!nodeMap[id])return;
+  selectedNodeId=id;
+  renderNodeCard(id);
+  highlightConnections(id);
+  const pos=nodeMeshes[id]?.mesh.position;
+  if(pos){
+    controls.target.lerp(pos,0.34);
+    controls.update();
+  }
+}
+nodeCardClose.addEventListener('click',()=>{
+  nodeCard.hidden=true;
+  selectedNodeId=null;
+  highlightConnections(hoveredNodeId);
+});
+nodeCard.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'){ev.preventDefault();nodeCardClose.click();}
+});
 
 function getConnectedIds(nodeId) {
   const set = new Set();
@@ -605,41 +781,20 @@ function hoverNode(nodeId, event) {
   tooltip.style.left = (event.clientX + 15) + 'px';
   tooltip.style.top = (event.clientY - 10) + 'px';
 
-  const connected = getConnectedIds(nodeId);
-  for (const [id, inf] of Object.entries(nodeMeshes)) {
-    if (id === nodeId || connected.has(id)) {
-      inf.mesh.material.color.copy(inf.baseColor);
-    } else {
-      inf.mesh.material.color.copy(inf.baseColor).multiplyScalar(0.08);
-    }
-  }
-  const connEdges = new Set((nodeEdgeLookup[nodeId] || []).map(e => e.idx));
-  for (let i = 0; i < edgesData.length; i++) {
-    const j = i * 6;
-    const mult = connEdges.has(i) ? 3.5 : 0.08;
-    edgeColors[j]   = edgeBaseColors[j]   * mult;
-    edgeColors[j+1] = edgeBaseColors[j+1] * mult;
-    edgeColors[j+2] = edgeBaseColors[j+2] * mult;
-    edgeColors[j+3] = edgeBaseColors[j+3] * mult;
-    edgeColors[j+4] = edgeBaseColors[j+4] * mult;
-    edgeColors[j+5] = edgeBaseColors[j+5] * mult;
-  }
-  edgeColorAttr.needsUpdate = true;
+  highlightConnections(nodeId);
 }
 
 function unhover() {
   if (!hoveredNodeId) return;
   hoveredNodeId = null;
   tooltip.style.display = 'none';
-  for (const info of Object.values(nodeMeshes)) {
-    info.mesh.material.color.copy(info.baseColor);
-  }
-  edgeColors.set(edgeBaseColors);
-  edgeColorAttr.needsUpdate = true;
+  highlightConnections(selectedNodeId);
 }
 
-container.addEventListener('mousemove', (event) => {
-  const rect = renderer.domElement.getBoundingClientRect();
+container.addEventListener('mousemove',(event)=>{
+  if(event.buttons || performance.now()-lastPickAt<32)return;
+  lastPickAt=performance.now();
+  const rect=renderer.domElement.getBoundingClientRect();
   mouseNDC.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouseNDC.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
@@ -657,14 +812,22 @@ container.addEventListener('mousemove', (event) => {
   }
 });
 
-container.addEventListener('click', (event) => {
-  if (!debugMode) return;
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(raycastTargets);
-  if (hits.length > 0) {
-    const nid = meshToNodeId.get(hits[0].object);
-    if (nid) handleDebugClick(nodeMap[nid]);
-  }
+let dragStart=null;
+container.addEventListener('pointerdown',event=>{
+  dragStart={x:event.clientX,y:event.clientY};
+});
+container.addEventListener('click',event=>{
+  if(dragStart&&Math.hypot(event.clientX-dragStart.x,event.clientY-dragStart.y)>6)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouseNDC.x=((event.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(raycastTargets);
+  if(!hits.length)return;
+  const id=meshToNodeId.get(hits[0].object);
+  if(!id||!nodeMap[id])return;
+  openNodeCard(id);
+  if(debugMode)handleDebugClick(nodeMap[id]);
 });
 
 // ═══════════════════════════════════════
@@ -683,8 +846,12 @@ function pulseNode(nodeId, colorHex, durationMs) {
   const glow = info.glow;
   const origGlowScale = glow ? glow.scale.x : 0;
 
-  const light = new THREE.PointLight(new THREE.Color(colorHex), 3, baseR * 18);
+  const light=new THREE.PointLight(new THREE.Color(colorHex),3,baseR*18);
   scene.add(light);
+  const cleanLight=trackTransient(()=>{
+    scene.remove(light);
+    light.dispose();
+  });
 
   addAnimation(durationMs, (t) => {
     let sf;
@@ -713,8 +880,8 @@ function pulseNode(nodeId, colorHex, durationMs) {
     mat.emissive.copy(origEmissive);
     mat.emissiveIntensity = baseEI;
     info.mesh.scale.setScalar(baseR);
-    scene.remove(light); light.dispose();
-    if (glow) { glow.scale.setScalar(origGlowScale); glow.material.opacity = 0.5; }
+    cleanLight();
+    if(glow){glow.scale.setScalar(origGlowScale);glow.material.opacity=0.5;}
   }, 'pulse-' + nodeId);
 
   // Pulse connected edges
@@ -742,6 +909,7 @@ function pulseNode(nodeId, colorHex, durationMs) {
         edgeColors[j+2] = edgeColors[j+5] = base[2];
       }
       edgeColorAttr.needsUpdate = true;
+      if(selectedNodeId||hoveredNodeId)highlightConnections(hoveredNodeId||selectedNodeId);
     }, 'edge-pulse-' + nodeId);
   }
 }
@@ -792,15 +960,17 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
       scene.add(particle);
       const light = new THREE.PointLight(new THREE.Color(colorHex), 0.5, 25);
       particle.add(light);
+      const cleanParticle=trackTransient(()=>{
+        scene.remove(particle);
+        geo.dispose();mat.dispose();light.dispose();
+      });
 
-      addAnimation(travelMs, (t) => {
+      addAnimation(travelMs,(t)=>{
         particle.position.copy(curve.getPoint(t));
         particle.scale.setScalar(1 - t * 0.7);
         mat.opacity = (0.9 - i * 0.05) * (1 - t * 0.5);
         light.intensity = 0.5 * (1 - t);
-      }, () => {
-        scene.remove(particle); geo.dispose(); mat.dispose(); light.dispose();
-      });
+      },cleanParticle);
     };
     if(i===0)spawnParticle();
     else addAnimation(i*stagger,()=>{},spawnParticle);
@@ -812,11 +982,14 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
   const pathMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.3 });
   const pathLine = new THREE.Line(pathGeo, pathMat);
   scene.add(pathLine);
+  const cleanPath=trackTransient(()=>{
+    scene.remove(pathLine);pathGeo.dispose();pathMat.dispose();
+  });
 
   const totalMs = travelMs + (numP - 1) * stagger + 800;
   addAnimation(totalMs, (t) => {
     if (t > 0.5) pathMat.opacity = 0.3 * (1 - (t - 0.5) / 0.5);
-  }, () => { scene.remove(pathLine); pathGeo.dispose(); pathMat.dispose(); });
+  },cleanPath);
 
   addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive);
 }
@@ -841,9 +1014,62 @@ function handleDebugClick(d) {
   lastDebugNode = d;
 }
 
-// ═══════════════════════════════════════
+/**
+ * Evidence motion is drawn ONLY along edges present in the real SQLite snapshot.
+ * Blue: owner-confirmed records fetched into the prompt; gold: answer was stored.
+ * This does not imply visibility into the model's internal reasoning.
+ */
+function animateRecordedRoute(route,color){
+  if(!Array.isArray(route)||route.length<2)return false;
+  const nodes=route.map(id=>nodeMeshes[id]);
+  if(nodes.some(x=>!x))return false;
+  const material=new THREE.SpriteMaterial({
+    map:glowTexture,color,transparent:true,opacity:.95,
+    blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false
+  });
+  const pulse=new THREE.Sprite(material);
+  pulse.scale.set(8,8,1);
+  scene.add(pulse);
+  const clean=trackTransient(()=>{scene.remove(pulse);material.dispose();});
+  const segments=route.length-1;
+  addAnimation(Math.max(850,segments*450),t=>{
+    const position=Math.min(segments-.00001,t*segments);
+    const segment=Math.floor(position),blend=position-segment;
+    pulse.position.lerpVectors(nodes[segment].mesh.position,
+      nodes[segment+1].mesh.position,blend);
+    pulse.scale.setScalar(8*(1-.5*t));
+    material.opacity=(1-t)*.95;
+  },clean);
+  return true;
+}
+function showRecordedAnswerStage(event){
+  if(event.source!=='sqlite_audit'||!['retrieval','response'].includes(event.phase))return;
+  const used=(event.targets||[]).filter(id=>id.startsWith('mem:')&&nodeMap[id]).slice(0,5);
+  const subtitle=document.getElementById('answer-stage');
+  if(event.phase==='retrieval'){
+    subtitle.textContent=used.length?
+      'Реальный запрос: в контекст извлечено '+used.length+' записей памяти.':
+      'Реальный запрос: поиск памяти начался; связанных записей нет.';
+    for(const id of used){
+      const route=graphRoute('core:soryuka',id,edgesData||[]);
+      animateRecordedRoute(route,'#6a8fff');
+      pulseNode(id,'#6a8fff',1800);
+    }
+  }else{
+    subtitle.textContent='Ответ получен и сохранён в SQLite. Путь — только по подтверждённым связям.';
+    for(const id of used){
+      const route=graphRoute(id,'core:soryuka',edgesData||[]);
+      animateRecordedRoute(route,'#e7b976');
+    }
+    if(event.session_node&&nodeMap[event.session_node])
+      animateRecordedRoute(graphRoute('core:soryuka',event.session_node,edgesData||[]),'#e7b976');
+    pulseNode('core:soryuka','#e7b976',1800);
+  }
+}
+
+// ═══════════════════════════════
 // Activity Feed
-// ═══════════════════════════════════════
+// ═══════════════════════════════
 
 const feedList = document.getElementById('feedList');
 const MAX_FEED = 20;
@@ -894,6 +1120,7 @@ function connectWebSocket() {
     if (parsed.type === 'event') {
       const ev = parsed.data;
       addFeedItem(ev);
+      showRecordedAnswerStage(ev);
 
       if (ev.type === 'read') {
         const nid = findNodeById(ev.path);
@@ -1017,12 +1244,78 @@ window._rescan = function() {
   fetch('/api/mirror/graph',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('API '+r.status);return r.json();}).then(d=>buildGraph(adaptGraph(d))).catch(e=>console.error('Mirror reload failed:',e));
 };
 
+/**
+ * Camera-distance level of detail. All real SQLite records stay in nodeMap;
+ * distant leaf meshes are not submitted as separate GPU draw calls until zoom.
+ */
+function updateLod(force=false){
+  if(!nodesData)return;
+  const now=performance.now();
+  if(!force&&now-lastLodUpdate<500)return;
+  lastLodUpdate=now;
+  const leaves=nodesData.filter(n=>n.type==='file');
+  const maxLeaves=Math.max(170,Math.floor((nodesData.length>850?300:490)*quality));
+  const visible=new Set(leaves.length<=maxLeaves?leaves.map(n=>n.id):
+    leaves.map(n=>{
+      const p=nodeMeshes[n.id]?.mesh.position;
+      return {id:n.id,dist:p?p.distanceToSquared(camera.position):Infinity};
+    }).sort((a,b)=>a.dist-b.dist).slice(0,maxLeaves).map(n=>n.id));
+  if(selectedNodeId)visible.add(selectedNodeId);
+  if(hoveredNodeId)visible.add(hoveredNodeId);
+  let count=0;
+  for(const n of nodesData){
+    const info=nodeMeshes[n.id];
+    if(!info)continue;
+    const show=n.type!=='file'||visible.has(n.id);
+    info.mesh.visible=show;
+    if(show)count++;
+  }
+  visibleNodeCount=count;
+}
+
+const perfStatus=document.getElementById('perf-status');
+function updateAdaptiveGraphics(now,delta){
+  if(document.hidden)return;
+  frameCount++;
+  if(!frameWindow)frameWindow=now;
+  const elapsed=now-frameWindow;
+  if(elapsed<2200)return;
+  fps=Math.round(frameCount*1000/Math.max(1,elapsed));
+  frameCount=0;frameWindow=now;
+  // Hysteresis and a bounded resolution ratio protect laptop GPUs.
+  const before=quality;
+  if(fps<37)quality=Math.max(.55,Number((quality-.12).toFixed(2)));
+  else if(fps>53)quality=Math.min(1,Number((quality+.06).toFixed(2)));
+  if(before!==quality){
+    renderer.setPixelRatio(Math.max(.5,Math.min(window.devicePixelRatio||1,2)*quality));
+    applyAtmosphere();
+    updateLod(true);
+  }
+  perfStatus.textContent=fps+' FPS · '+visibleNodeCount+'/'+(nodesData?.length||0)+
+    ' узлов · качество '+Math.round(quality*100)+'%';
+}
+window.__soryukaDiagnostics=()=>{
+  // Only rendering diagnostics are exposed; never private memory bodies or API tokens.
+  const core=nodeMeshes['core:soryuka'];
+  let center=null;
+  if(core){
+    const point=core.mesh.position.clone().project(camera);
+    const rect=renderer.domElement.getBoundingClientRect();
+    center={x:Math.round(rect.left+(point.x+1)*rect.width/2),
+      y:Math.round(rect.top+(1-point.y)*rect.height/2)};
+  }
+  return {webgl:!graphicLost,fps,quality,visibleNodes:visibleNodeCount,
+    totalNodes:nodesData?.length||0,fogDensity:scene.fog.density,
+    selectedNode:!!selectedNodeId,coreScreen:center};
+};
+
 // ═══════════════════════════════════════
 // Animation Loop
 // ═══════════════════════════════════════
 
 function animate() {
   requestAnimationFrame(animate);
+  if(graphicLost)return;
   const now=performance.now();
   // Cap long background-tab pauses; changing speed does not jump or reset the scene.
   const delta=previousFrame?Math.max(0,Math.min(100,now-previousFrame)):16.67;
@@ -1033,16 +1326,21 @@ function animate() {
   // The original force simulation is now clocked by the same user-selected speed.
   // At most four ticks per frame prevent CPU spikes when the tab resumes.
   if(simulation){
-    physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
+    const nodeWeight=(nodesData?.length||0)>650?0.68:1;
+    const workBudget=quality*nodeWeight;
+    physicsProgress+=Math.min(4,delta/16.67*graphics.speed*workBudget);
     let ticks=Math.min(4,Math.floor(physicsProgress));
     physicsProgress-=ticks;
-    while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+    while(ticks-->0&&simulation.alpha()>simulation.alphaMin())simulation.tick();
+    if(simulation.alpha()>simulation.alphaMin())updatePositions();
   }
-  updatePositions();
   controls.update();
-  renderer.render(scene, camera);
+  updateLod();
+  renderer.render(scene,camera);
+  updateAdaptiveGraphics(now,delta);
 }
 animate();
+window.dispatchEvent(new Event('soryuka:scene-ready'));
 
 // ═══════════════════════════════════════
 // Resize
@@ -1063,5 +1361,8 @@ window.addEventListener('resize', () => {
 fetch('/api/mirror/graph',{cache:'no-store'})
   .then(r => r.json())
   .then(data => { buildGraph(adaptGraph(data)); connectWebSocket(); })
-  .catch(e => console.error('Failed to load graph data:', e));
+  .catch(e=>{
+    console.error('Soryuka SQLite graph failed:',e);
+    window.__soryukaGraphicsError?.('Не удалось загрузить карту памяти SQLite. Проверь локальный Python API и повтори запуск.');
+  });
 

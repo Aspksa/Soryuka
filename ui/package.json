@@ -5,11 +5,15 @@
   "type": "module",
   "description": "Local browser 3D engine for the existing Soryuka Python/SQLite application",
   "scripts": {
-    "check": "node --check mirror-original.js && node --check server.mjs"
+    "check": "node --check mirror-original.js && node --check server.mjs",
+    "test:browser": "node browser-smoke.mjs"
   },
   "dependencies": {
     "three": "0.160.0",
     "d3-force-3d": "3.0.6",
     "ws": "8.23.0"
+  },
+  "devDependencies": {
+    "playwright": "1.55.0"
   }
 }

@@ -235,8 +235,14 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
             targets=["task:"+subject]
         elif r["action"].startswith("episode_"):
             targets=["episode:"+subject]
+        # Only these two lifecycle stages are actual engine audit records.
+        # This is a retrieval/persistence trace, never the LLM's hidden reasoning.
+        phase=("retrieval" if r["action"]=="mirror_chat_started" else
+               "response" if r["action"]=="mirror_chat_response" else None)
         items.append({"id":"a:"+str(r["id"]),"kind":kind,"title":title,
                       "category":category,"targets":targets,
+                      "phase":phase,
+                      "session_node":("session:"+subject) if phase else None,
                       "at":r["created_at"],"source":"sqlite_audit"})
     for r in messages:
         items.append({"id":"m:"+str(r["id"]),
