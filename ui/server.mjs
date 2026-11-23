@@ -83,7 +83,7 @@ const server=http.createServer((req,res)=>{
   });
 });
 
-// Original Agent Mirror browser uses a live WebSocket. This relay ONLY reads from
+// Soryuka 3D graph uses a live WebSocket. This relay ONLY reads from
 // Python's token-authenticated SQLite API, keeping the Python process the sole API.
 const mirrorWss=new WebSocketServer({noServer:true,maxPayload:32_768,perMessageDeflate:false});
 const MAX_SOCKETS=8;

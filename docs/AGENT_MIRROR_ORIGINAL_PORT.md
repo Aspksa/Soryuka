@@ -1,9 +1,10 @@
-# Soryuka — original Agent Mirror 3D engine
+# Сорюка — 3D-движок карты памяти
 
-## What the user requested
+## Задача и происхождение движка
 
-**Not merely a similar-looking image:** port the actual original 3D engine, all its
-atmosphere, fog, glowing spheres, graph physics and animation into Soryuka's homepage.
+В главной Сорюки используется настоящая WebGL-сцена с туманом, источниками света,
+светящимися узлами и физикой графа. Движок адаптирован из открытого исходника,
+указанного ниже, а **название ассистента остаётся только Сорюка**.
 
 Source studied and ported:
 - [gnufoo/agent-mirror / index.html](https://github.com/gnufoo/agent-mirror/blob/main/index.html) — the original default **LIVE 3D** scene
@@ -12,7 +13,7 @@ Source studied and ported:
 The previous custom 2D Canvas projection is no longer the default. It remains
 as historical source code only. Do not confuse it with the new WebGL engine.
 
-## Exact original engine transferred
+## Реализованный 3D-движок Сорюки
 
 | Piece | Implementation on main homepage |
 |---|---|
@@ -91,9 +92,9 @@ memory, old panels and cached embeddings operate locally.
 
 Библиотек, Docker и новых процессов это не требует.
 
-## Where is the old chat?
+## Где находится чат Сорюки?
 
-- `/`: **original** Agent Mirror 3D scene with Soryuka's SQLite graph.
+- `/`: **трёхмерная карта памяти Сорюки** с её SQLite и графическими настройками.
 - `/console.html`: unchanged older chat/Academy/settings/personality UX.
 - `ui/mirror.js`: historical 2D imitation (not loaded on the new homepage).
 - `ui/mirror-original.js`: imported original Three.js scene with local adaptations.
