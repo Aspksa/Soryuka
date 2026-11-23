@@ -35,6 +35,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install pinned local 3D frontend dependencies
+        run: npm install --prefix ui --ignore-scripts --no-audit --no-fund --omit=dev
       - name: Validate Python syntax
         run: python -m compileall -q core character tests launch.py
       - name: Run Python unit and API integration tests
@@ -46,3 +51,4 @@ jobs:
           node --check ui/server.mjs
           node --check ui/app.js
           node --check ui/mirror.js
+          node --check ui/mirror-original.js
