@@ -20,9 +20,13 @@ from living_personality_runtime import validate_profiles,select_style  # noqa:E4
 try:
     from .soul_store import SoulStore,StoreError,clean
     from .capabilities_v4 import SoulCapabilities
+    from .cognitive_v5 import CognitiveV5
+    from .growth_v5 import GrowthV5
 except ImportError:
     from soul_store import SoulStore,StoreError,clean
     from capabilities_v4 import SoulCapabilities
+    from cognitive_v5 import CognitiveV5
+    from growth_v5 import GrowthV5
 
 V3_PATH=ROOT/"character"/"living_personality_v3.json"
 URL="https://foundation-models.api.cloud.ru/v1/chat/completions"
@@ -148,11 +152,15 @@ class SoryukaEngine:
         self.store=store
         self.cloud=cloud or CloudClient()
         self.v4=SoulCapabilities(self.store)
+        self.v5=CognitiveV5(self.store,self.v4)
+        self.growth=GrowthV5(self.store,self.v5)
 
     def profile(self)->dict:
         p=load_persona()
         return {"name":p["character"]["name"],"title":p["character"]["official_title"],
                 "memory_academy_version":self.v4.config["schema_version"],"v4_selected_features":25,
+                "evolution_version":self.v5.contract["schema_version"],"v5_selected_features":32,
+                "evolution_permissions":self.v5.permissions(),"background_cloud_calls":False,
                 "tail_count":9,"personality_version":p["v3"]["schema_version"],
                 "personality_features":len(p["v3"]["features"]),
                 "principle":p["v3"]["core_principle"],
@@ -174,7 +182,12 @@ class SoryukaEngine:
         trusted=[row for row in found if row.get("provenance")=="owner_confirmed"][:6]
         memories=trusted if trusted else self.v4.confirmed_memories(6)
         relationship=self.v4.relationship_context(3) if intent in ("affection","greeting","compliment","creative") else {}
-        extra={"relationship":relationship}
+        plan=self.v5.reasoning_plan(text)
+        extra={"relationship":relationship,"evidence_plan":{
+            "subquestions":[{"question":r["question"],"source_ids":r["source_ids"],
+                             "confidence_label":r["confidence_label"]} for r in plan["questions"]],
+            "source_ids":plan["source_ids"],
+            "limits":"These are owner records, not independently verified facts. Do not invent citations."}}
         if intent=="compliment":
             reaction=self.v4.compliment_reaction(len(history)//2)
             extra["fictional_compliment_style_hint"]=reaction["line"]
@@ -185,6 +198,9 @@ class SoryukaEngine:
         answer,usage=self.cloud.complete([{"role":"system","content":prompt},*turns])
         # Save one atomic exchange only after a successful provider response.
         self.store.save_exchange(sid,text,answer,event["intent"])
-        return {"session_id":sid,"answer":answer,"avatar":{
+        suggestions=self.v5.suggested_facts(text)
+        quality=self.v5.inspect_answer(answer,plan)
+        return {"session_id":sid,"answer":answer,
+                "memory_suggestions":suggestions,"reasoning_review":quality,"avatar":{
                     "emotion":event["emotion"],"gesture":event["gesture"],"expression":event["expression"]},
                 "mode":event["mode"],"usage":usage}
