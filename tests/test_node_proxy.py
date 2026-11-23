@@ -99,8 +99,11 @@ class NodeProxyTests(unittest.TestCase):
         self.assertTrue(json.loads(payload)["ok"])
 
     def test_mirror_static_assets_and_legacy_console(self):
-        for route,marker in [("/",b"mirror-canvas"),("/console.html",b"chat-form"),
-                             ("/mirror.css",b"mirror-layout"),("/mirror.js",b"pollActivity")]:
+        for route,marker in [("/",b"canvas-container"),("/console.html",b"chat-form"),
+                             ("/mirror-original.js",b"THREE.FogExp2"),
+                             ("/vendor/three.module.js",b"WebGLRenderer"),
+                             ("/vendor/three-addons/controls/OrbitControls.js",b"OrbitControls"),
+                             ("/vendor/d3-force-3d.min.js",b"forceSimulation")]:
             status,body,headers=self.request(route)
             self.assertEqual(status,200,route)
             self.assertIn(marker,body,route)
@@ -108,6 +111,53 @@ class NodeProxyTests(unittest.TestCase):
         status,data,_=self.request("/api/mirror/graph")
         self.assertEqual(status,200)
         self.assertEqual(json.loads(data)["source"],"local_sqlite")
+
+    def test_websocket_streams_original_realtime_graph_without_exposing_secret(self):
+        import base64
+        import secrets
+        key=base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+        with socket.create_connection(("127.0.0.1",self.ui_port),timeout=5) as sock:
+            sock.settimeout(8)
+            sock.sendall((
+                "GET /mirror-ws HTTP/1.1\\r\\n"
+                f"Host: 127.0.0.1:{self.ui_port}\\r\\n"
+                "Upgrade: websocket\\r\\nConnection: Upgrade\\r\\n"
+                f"Sec-WebSocket-Key: {key}\\r\\n"
+                "Sec-WebSocket-Version: 13\\r\\n"
+                f"Origin: {self.address}\\r\\n\\r\\n"
+            ).replace("\\r","\\r").replace("\\n","\\n").encode("ascii"))
+            data=b""
+            while b"\\r\\n\\r\\n" not in data:
+                data+=sock.recv(4096)
+            headers,payload=data.split(b"\\r\\n\\r\\n",1)
+            self.assertIn(b"101 Switching Protocols",headers)
+            # Initial WebSocket text frame is a real graph snapshot from Python.
+            while len(payload)<2:payload+=sock.recv(4096)
+            prefix=payload[1]&127
+            if prefix==126:
+                while len(payload)<4:payload+=sock.recv(4096)
+                length=int.from_bytes(payload[2:4],"big");header_size=4
+            elif prefix==127:
+                while len(payload)<10:payload+=sock.recv(4096)
+                length=int.from_bytes(payload[2:10],"big");header_size=10
+            else:length=prefix;header_size=2
+            while len(payload)<header_size+length:payload+=sock.recv(4096)
+            frame=json.loads(payload[header_size:header_size+length])
+            self.assertEqual(frame["type"],"reload")
+            self.assertEqual(frame["data"]["source"],"local_sqlite")
+            self.assertNotIn("test-proxy-token",json.dumps(frame))
+
+    def test_websocket_rejects_cross_origin(self):
+        import base64
+        with socket.create_connection(("127.0.0.1",self.ui_port),timeout=5) as sock:
+            sock.settimeout(4)
+            req=(f"GET /mirror-ws HTTP/1.1\\r\\nHost: 127.0.0.1:{self.ui_port}\\r\\n"
+                 "Upgrade: websocket\\r\\nConnection: Upgrade\\r\\n"
+                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\n"
+                 "Sec-WebSocket-Version: 13\\r\\n"
+                 "Origin: https://example.com\\r\\n\\r\\n")
+            sock.sendall(req.replace("\\r","\\r").replace("\\n","\\n").encode("ascii"))
+            self.assertIn(b"403 Forbidden",sock.recv(1024))
 
     def test_chat_proxy_keeps_server_token_off_browser(self):
         code,body,_=self.request("/api/session",{})
