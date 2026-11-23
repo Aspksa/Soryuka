@@ -114,8 +114,10 @@ function normalizeGraph(graph){
   }
   renderLegend();
   const itemCount=Number(graph.stats?.items||0);
-  $('graph-loading').hidden=itemCount>0;
-  if(!itemCount)$('graph-loading').textContent='Память пока пуста · узлы появятся после сохранения данных';
+  $('graph-loading').hidden=true;
+  $('scene-status').textContent=itemCount>0
+    ?'ПЕРЕТАСКИВАЙ, ЧТОБЫ ВРАЩАТЬ · КОЛЕСО — МАСШТАБ'
+    :'ПАМЯТЬ ПОКА ПУСТА · ПОКАЗАНЫ РЕАЛЬНЫЕ ФАЙЛЫ КАНОНА И КАТЕГОРИИ';
   state.lastSync=Date.now();
   $('sync-age').textContent='ПОСЛЕДНЯЯ СИНХРОНИЗАЦИЯ: '+new Date().toLocaleTimeString('ru-RU');
 }
