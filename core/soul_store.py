@@ -5,7 +5,7 @@ Uses Python standard library only.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import json
 import os
@@ -236,8 +236,10 @@ class SoulStore:
         dest.mkdir(parents=True,exist_ok=True)
         stamp=datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         target=dest/f"soryuka-{stamp}-{uuid.uuid4().hex[:8]}.sqlite3"
-        with sqlite3.connect(str(self.path),timeout=15) as original:
-            with sqlite3.connect(str(target),timeout=15) as backup:
+        # A sqlite3.Connection context manager does NOT close the connection;
+        # explicitly close source and destination to release Windows file locks.
+        with closing(sqlite3.connect(str(self.path),timeout=15)) as original:
+            with closing(sqlite3.connect(str(target),timeout=15)) as backup:
                 original.backup(backup)
         with self.db() as conn:
             self._audit(conn,"backup_created",target.name,None,None)
