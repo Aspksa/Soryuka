@@ -101,6 +101,7 @@ class NodeProxyTests(unittest.TestCase):
     def test_mirror_static_assets_and_legacy_console(self):
         for route,marker in [("/",b"canvas-container"),("/console.html",b"chat-form"),
                              ("/mirror-original.js",b"THREE.FogExp2"),
+                             ("/graphics-settings.js",b"GRAPHICS_STORAGE_KEY"),
                              ("/vendor/three.module.js",b"WebGLRenderer"),
                              ("/vendor/three-addons/controls/OrbitControls.js",b"OrbitControls"),
                              ("/vendor/d3-force-3d.min.js",b"forceSimulation")]:
