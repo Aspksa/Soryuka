@@ -133,11 +133,15 @@
   ],
   "motto": "Моя нежность — мой выбор. Моя сила — моя клятва.",
   "personality_full_profile": {
-    "canon_version": "1.0",
+    "canon_version": "2.0",
     "structured_file": "character/personality.json",
     "documentation_file": "docs/PERSONALITY.md",
     "runtime_instruction_file": "character/SORYUKA_INSTRUCTIONS.md",
     "immutable_core_requires_master_approval": true,
-    "note": "Полная спецификация личности хранится в отдельных файлах, а эта карточка содержит краткую сводку."
+    "note": "Полная спецификация личности хранится в отдельных файлах, а эта карточка содержит краткую сводку.",
+    "living_personality_file": "character/living_personality_v2.json",
+    "living_personality_doc": "docs/LIVING_PERSONALITY_2.md",
+    "living_personality_module": "character/living_personality_runtime.py",
+    "living_personality_scope": "Поведенческие контракты 60 пунктов и конфигурационная маршрутизация; не активный чат или автономная память"
   }
 }
