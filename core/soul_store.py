@@ -296,6 +296,30 @@ class SoulStore:
              FROM feedback GROUP BY skill ORDER BY skill
             """).fetchall())
 
+    def recommend_goals(self) -> list[dict]:
+        """On-demand, read-only learning suggestions from observed owner ratings.
+
+        At least two ratings and an average <= 3.5 are needed; never invent a score.
+        Suggestions are NOT enrolled automatically, never run in background, cost nothing.
+        """
+        examples={
+            "языки":("Точность перевода","Проверить 10 коротких фраз с ответами"),
+            "программирование":("Надёжность программных решений","Пройти 5 проверяемых задач без регрессий"),
+            "дизайн":("Читаемость интерфейса","Проверить 5 экранов по чек-листу UX"),
+            "логика":("Проверяемость рассуждений","Разобрать 5 задач и проверить выводы"),
+            "общение":("Разнообразие и точность речи","Оценить 5 диалогов по ясности и отсутствию повторов"),
+            "творчество":("Качество творческих предложений","Получить оценки пяти авторских работ")
+        }
+        active={x["skill"] for x in self.goals() if x["status"] in ("proposed","approved")}
+        suggestions=[]
+        for metric in self.skill_metrics():
+            skill=metric["skill"]
+            if metric["rating_count"]>=2 and metric["mean_owner_rating"]<=3.5 and skill not in active:
+                title,criterion=examples[skill]
+                suggestions.append({"skill":skill,"title":title,"criterion":criterion,
+                                    "reason":f"{metric['rating_count']} оценок; средняя {metric['mean_owner_rating']}/5"})
+        return suggestions
+
     def recent_feedback(self, limit:int=30)->list[dict]:
         with self.db() as conn:
             return self.as_dicts(conn.execute(
