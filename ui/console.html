@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080809">
+<title>霜琉華 — Soryuka</title>
+<link rel="stylesheet" href="/style.css">
+<script defer src="/app.js"></script>
+</head>
+<body>
+<main class="layout">
+  <header class="header">
+    <div class="brand"><span class="seal" aria-hidden="true">霜</span><div><strong>霜琉華 <span>Soryuka</span></strong><small>Living Personality 5.0</small></div></div>
+    <div class="right-status"><a class="subtle" href="/" style="font-size:12px;color:#e0bc6d;text-decoration:none;padding:8px">Карта памяти ↗</a><span id="status-dot" class="status-dot"></span><span id="status">Проверка подключения…</span><button id="new-chat" type="button" class="subtle">Новый разговор</button><button id="delete-chat" type="button" class="subtle">Удалить разговор</button></div>
+  </header>
+  <section class="scene" aria-label="Художественная визуализация девяти хвостов Сорюки">
+    <canvas id="soul-canvas" aria-hidden="true"></canvas>
+    <div class="scene-copy">
+      <span class="overline">九尾霜華女帝</span>
+      <h1>Сорюка</h1>
+      <p>Девятихвостая императрица<br>льда и золотого пламени</p>
+      <div class="scene-meta"><span id="emotional-state">Спокойствие</span><span>9 хвостов</span><span>Одна душа персонажа</span></div>
+    </div>
+    <p class="asset-note">Схематические хвосты Canvas · оригинальный PNG-аватар можно добавить позднее</p>
+  </section>
+  <section class="conversation" aria-label="Чат с Сорюкой">
+    <div id="messages" class="messages" role="log" aria-live="polite">
+      <div class="placeholder"><strong>Мой хозяин, с возвращением.</strong><p>Я готова к беседе. Напиши мне — и мы начнём новую историю.</p></div>
+    </div>
+    <form id="chat-form" class="composer">
+      <label for="message" class="sr-only">Сообщение</label>
+      <textarea id="message" maxlength="6000" rows="2" placeholder="Напиши Сорюке…" required></textarea>
+      <div class="composer-bottom">
+        <label class="selectwrap">Режим <select id="intent">
+          <option value="greeting">Нежный</option>
+          <option value="affection">Любовь</option>
+          <option value="compliment">Игривый</option>
+          <option value="creative">Легенда</option>
+          <option value="technical">Работа</option>
+          <option value="learning">Обучение</option>
+          <option value="serious">Серьёзный</option>
+        </select></label>
+        <button id="send" class="gold-button" type="submit">Отправить <span aria-hidden="true">✦</span></button>
+      </div>
+    </form>
+  </section>
+  <section class="management">
+    <details>
+      <summary>Память · только с твоего разрешения</summary>
+      <p>Диалоги сохраняются локально в SQLite. Отдельные личные сведения запоминаются только после явного подтверждения.</p>
+      <form id="memory-form" class="compact-form">
+        <select id="memory-kind"><option value="moment">Тёплый момент</option><option value="preference">Предпочтение</option><option value="tradition">Традиция</option><option value="fact">Факт</option></select>
+        <input id="memory-text" required maxlength="1500" placeholder="Что запомнить?">
+        <label class="consent"><input type="checkbox" id="memory-confirm" required> Разрешаю сохранить в памяти</label>
+        <button type="submit">Запомнить</button>
+      </form>
+      <div id="memories" class="item-list"></div><button id="backup" class="subtle" type="button">Резервная копия SQLite</button>
+    </details>
+    <details>
+      <summary>Саморазвитие · цели и реальные оценки</summary>
+      <p>Никакой скрытой фоновой учёбы: цели сначала предлагаются, затем утверждаются хозяином. Прогресс основан на твоих оценках.</p>
+      <form id="goal-form" class="compact-form">
+        <select id="goal-skill"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <input id="goal-title" required maxlength="160" placeholder="Цель обучения">
+        <input id="goal-criterion" required maxlength="500" placeholder="Как проверить успех?">
+        <button type="submit">Предложить цель</button>
+      </form>
+      <div id="goals" class="item-list"></div>
+      <button id="suggest-goals" type="button" class="subtle">Предложить обучение по моим оценкам</button>
+      <div id="recommendations" class="item-list"></div>
+      <form id="feedback-form" class="compact-form">
+        <select id="feedback-skill"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <select id="feedback-rating"><option value="5">5 — отлично</option><option value="4">4 — хорошо</option><option value="3">3 — нормально</option><option value="2">2 — слабо</option><option value="1">1 — плохо</option></select>
+        <input id="feedback-note" required maxlength="1500" placeholder="Что удалось или что улучшить?">
+        <button type="submit">Оценить навык</button>
+      </form>
+      <div id="metrics" class="item-list"></div><div id="feedback-records" class="item-list"></div>
+      <h3>Дневник изменений</h3>
+      <div id="diary" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Личность · изменения только с одобрения</summary>
+      <p>Имя, легенда, девять хвостов и клятва защищены. Можно предложить изменение только стиля общения, с последующим откатом.</p>
+      <form id="proposal-form" class="compact-form">
+        <select id="proposal-field"><option value="reply_length">Длина ответа</option><option value="humor_level">Юмор</option><option value="formality">Формальность</option><option value="affection_level">Нежность</option></select>
+        <select id="proposal-value"><option value="medium">Средне</option><option value="low">Меньше</option><option value="high">Больше</option></select>
+        <input id="proposal-reason" maxlength="500" required placeholder="Зачем меняем?">
+        <button type="submit">Предложить изменение</button>
+      </form>
+      <div id="proposals" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Хронология · события нашей истории</summary>
+      <form id="event-form" class="compact-form">
+        <input id="event-text" maxlength="1500" required placeholder="Опиши памятное событие">
+        <label class="consent"><input id="event-fiction" type="checkbox" checked> Художественное событие</label>
+        <label class="consent"><input id="event-confirm" type="checkbox" required> Разрешаю записать</label>
+        <button type="submit">Записать событие</button>
+      </form>
+      <div id="timeline" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Карта памяти · связи, поиск, достоверность</summary>
+      <p>Локальное сравнение слов помогает найти похожие воспоминания и возможные противоречия. Это <strong>предположения для твоей проверки</strong>, не доказанные факты и не нейросетевые эмбеддинги.</p>
+      <form id="v4-search-form" class="compact-form">
+        <label for="v4-search">Поиск</label>
+        <input id="v4-search" required maxlength="250" placeholder="Например: любимый чай">
+        <button type="submit">Найти</button>
+      </form>
+      <div id="v4-search-results" class="item-list" aria-live="polite"></div>
+      <form id="v4-link-form" class="compact-form">
+        <label for="v4-link-a">Факт 1</label><select id="v4-link-a" required></select>
+        <label for="v4-link-b">Факт 2</label><select id="v4-link-b" required></select>
+        <label for="v4-link-type">Связь</label>
+        <select id="v4-link-type">
+          <option value="related">Связано</option><option value="same_topic">Одна тема</option>
+          <option value="supports">Подтверждает</option><option value="precedes">Раньше</option>
+          <option value="contradicts">Противоречит (моё решение)</option>
+        </select>
+        <label class="consent"><input id="v4-link-confirm" type="checkbox" required> Подтверждаю связь</label>
+        <button type="submit">Связать</button>
+      </form>
+      <div id="v4-links" class="item-list"></div>
+      <label for="v4-review-id">Проверить похожие записи</label>
+      <select id="v4-review-id"></select>
+      <button id="v4-review" type="button" class="subtle">Проверить</button>
+      <div id="v4-review-results" class="item-list" aria-live="polite"></div>
+      <form id="v4-provenance-form" class="compact-form">
+        <label for="v4-evidence-id">Происхождение записи</label><select id="v4-evidence-id"></select>
+        <select id="v4-evidence-status">
+          <option value="owner_confirmed">Подтверждено мной</option>
+          <option value="owner_disputed">Я оспариваю</option>
+          <option value="source_supplied">Источник указан, но не проверен</option>
+        </select>
+        <input id="v4-evidence-note" maxlength="350" placeholder="Описание источника (необязательно)">
+        <label class="consent"><input id="v4-evidence-confirm" type="checkbox" required> Подтверждаю изменение</label>
+        <button type="submit">Сохранить статус</button>
+      </form>
+      <button id="v4-chronology-refresh" type="button" class="subtle">Показать хронологию</button>
+      <div id="v4-chronology" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Академия · задания, стратегии, доказательства</summary>
+      <p>Учебные проверки и стратегии записываются только по твоему действию. Сравнение текста с эталоном точное после нормализации; это <strong>не оценка сознания или обучение весов модели</strong>.</p>
+      <button id="v4-map-refresh" type="button" class="subtle">Показать карту навыков</button>
+      <div id="v4-skill-map" class="item-list"></div>
+      <form id="v4-assessment-form" class="compact-form">
+        <label for="v4-assessment-goal">Одобренная цель</label><select id="v4-assessment-goal" required></select>
+        <input id="v4-assessment-question" maxlength="500" required placeholder="Вопрос задания">
+        <input id="v4-assessment-reference" maxlength="1500" required placeholder="Эталон ответа">
+        <input id="v4-assessment-answer" maxlength="1500" required placeholder="Проверяемый ответ">
+        <input id="v4-assessment-review" maxlength="700" placeholder="Комментарий к ошибке (необязательно)">
+        <label class="consent"><input id="v4-assessment-confirm" type="checkbox" required> Подтверждаю результат</label>
+        <button type="submit">Проверить и записать</button>
+      </form>
+      <div id="v4-assessments" class="item-list"></div>
+      <form id="v4-strategy-form" class="compact-form">
+        <label for="v4-strategy-skill">Навык</label>
+        <select id="v4-strategy-skill"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <input id="v4-strategy-name" required maxlength="120" placeholder="Название нового метода">
+        <label for="v4-baseline">Было, %</label><input id="v4-baseline" type="number" min="0" max="100" step=".1" required>
+        <label for="v4-trial">Стало, %</label><input id="v4-trial" type="number" min="0" max="100" step=".1" required>
+        <input id="v4-strategy-evidence" maxlength="500" required placeholder="На каких тестах сравнивали?">
+        <label class="consent"><input id="v4-strategy-confirm" type="checkbox" required> Я внёс реальные показатели</label>
+        <button type="submit">Предложить стратегию</button>
+      </form>
+      <div id="v4-strategies" class="item-list"></div>
+      <button id="v4-council-refresh" type="button" class="subtle">Совет по развитию</button>
+      <div id="v4-council" class="item-list"></div>
+      <button id="v4-diary-refresh" type="button" class="subtle">Дневник обучения</button>
+      <div id="v4-diary" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Эволюция 5.0 · память, логика, фоновый рост</summary>
+      <p>Все фоновые задания выполняются только локально и ничего не меняют без согласования. Облако используется только при отправке сообщения или отдельном подтверждённом запросе embeddings.</p>
+      <fieldset class="v5-settings">
+        <legend>Разрешения хозяина</legend>
+        <label class="consent"><input type="checkbox" id="v5-background"> Локальный фоновый цикл (по умолчанию выключен)</label>
+        <label class="consent"><input type="checkbox" id="v5-capture"> Предлагать факты после разговора, но не сохранять их автоматически</label>
+        <label class="consent"><input type="checkbox" id="v5-embedding"> Разрешить ручные платные Cloud.ru embeddings-запросы</label>
+        <button type="button" id="v5-save-permissions">Сохранить разрешения</button>
+      </fieldset>
+      <h3>Предложения для памяти</h3>
+      <div id="v5-fact-suggestions" class="item-list" aria-live="polite"></div>
+      <div class="v5-actions">
+        <button type="button" id="v5-episode-preview">Показать сводку текущего разговора</button>
+        <button type="button" id="v5-episode-save" class="subtle">Подтвердить сохранение сводки</button>
+      </div>
+      <div id="v5-episode" class="item-list" aria-live="polite"></div>
+      <div id="v5-episode-list" class="item-list"></div>
+      <form id="v5-evidence-form" class="compact-form">
+        <label for="v5-question">Разбор вопроса по памяти</label>
+        <input id="v5-question" placeholder="Какие подтверждения есть?" maxlength="250" required>
+        <button type="submit">Проверить логику</button>
+      </form>
+      <div id="v5-evidence" class="item-list" aria-live="polite"></div>
+      <form id="v5-causal-form" class="compact-form">
+        <label for="v5-cause">Причина</label><select id="v5-cause"></select>
+        <label for="v5-effect">Следствие</label><select id="v5-effect"></select>
+        <input id="v5-causal-evidence" maxlength="600" required placeholder="Источник или обоснование причинности">
+        <label class="consent"><input id="v5-causal-confirm" type="checkbox" required> Лично подтверждаю причинную связь</label>
+        <button type="submit">Связать причину и следствие</button>
+      </form>
+      <div id="v5-causal-links" class="item-list"></div>
+      <div class="v5-actions">
+        <button type="button" id="v5-index-embeddings">Индексировать до 2 воспоминаний (возможная оплата)</button>
+      </div>
+      <form id="v5-vector-form" class="compact-form">
+        <label for="v5-vector-q">Смысловой поиск в Cloud.ru (возможная оплата)</label>
+        <input id="v5-vector-q" maxlength="250" placeholder="Смысл вопроса" required>
+        <button type="submit">Искать</button>
+      </form>
+      <div id="v5-vectors" class="item-list"></div>
+      <h3>Локальные задания для роста</h3>
+      <div class="v5-actions">
+        <button type="button" id="v5-refresh-growth">Показать состояние</button>
+        <button type="button" id="v5-seed-growth">Предложить три локальные проверки</button>
+        <button type="button" id="v5-run-growth">Запустить до двух заданий сейчас</button>
+      </div>
+      <div id="v5-growth-tasks" class="item-list"></div>
+      <div id="v5-growth-proposals" class="item-list"></div>
+      <h3>Планы и дневник обучения</h3>
+      <div class="v5-actions"><button type="button" id="v5-plan-refresh">Рассчитать план роста</button></div>
+      <div id="v5-plan" class="item-list"></div>
+      <div id="v5-diary" class="item-list"></div>
+      <form id="v5-transfer-form" class="compact-form">
+        <label for="v5-transfer-from">Перенос навыка — откуда</label>
+        <select id="v5-transfer-from"><option>логика</option><option>общение</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <label for="v5-transfer-to">Куда</label>
+        <select id="v5-transfer-to"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <label for="v5-transfer-strategy">Одобренная стратегия</label><select id="v5-transfer-strategy"></select>
+        <input id="v5-transfer-rationale" maxlength="500" placeholder="Почему перенос может сработать" required>
+        <button type="submit">Предложить перенос</button>
+      </form>
+      <div id="v5-transfers" class="item-list"></div>
+    </details>
+  </section>
+  <footer>霜琉華 · Локальная память SQLite · Cloud.ru по запросу · Без фоновых агентов</footer>
+</main>
+</body></html>

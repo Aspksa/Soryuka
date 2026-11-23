@@ -386,7 +386,7 @@ class Api5Tests(unittest.TestCase):
 
 class V5UIContractTests(unittest.TestCase):
     def test_all_ui_controls_exist_and_js_matches_ts(self):
-        page=(ROOT/"ui"/"index.html").read_text(encoding="utf-8")
+        page=(ROOT/"ui"/"console.html").read_text(encoding="utf-8")
         js=(ROOT/"ui"/"app.js").read_text(encoding="utf-8")
         self.assertEqual(js,(ROOT/"ui"/"app.ts").read_text(encoding="utf-8"))
         for name in ["v5-background","v5-save-permissions","v5-capture","v5-episode-preview",

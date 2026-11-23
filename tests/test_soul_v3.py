@@ -355,7 +355,7 @@ class UIContractTests(unittest.TestCase):
         build=(ROOT/"ui"/"app.js").read_bytes()
         self.assertEqual(source,build)
     def test_ui_contains_nine_tail_canvas_and_consent_controls(self):
-        content=(ROOT/"ui"/"index.html").read_text(encoding="utf-8")
+        content=(ROOT/"ui"/"console.html").read_text(encoding="utf-8")
         self.assertIn("soul-canvas",content)
         self.assertIn("memory-confirm",content)
         self.assertIn("goal-criterion",content)

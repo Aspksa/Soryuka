@@ -98,6 +98,17 @@ class NodeProxyTests(unittest.TestCase):
         self.assertEqual(code,200)
         self.assertTrue(json.loads(payload)["ok"])
 
+    def test_mirror_static_assets_and_legacy_console(self):
+        for route,marker in [("/",b"mirror-canvas"),("/console.html",b"chat-form"),
+                             ("/mirror.css",b"mirror-layout"),("/mirror.js",b"pollActivity")]:
+            status,body,headers=self.request(route)
+            self.assertEqual(status,200,route)
+            self.assertIn(marker,body,route)
+            self.assertNotIn(b"test-proxy-token",body,route)
+        status,data,_=self.request("/api/mirror/graph")
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(data)["source"],"local_sqlite")
+
     def test_chat_proxy_keeps_server_token_off_browser(self):
         code,body,_=self.request("/api/session",{})
         self.assertEqual(code,200)
