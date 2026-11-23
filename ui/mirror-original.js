@@ -682,91 +682,162 @@ function updatePositions() {
 const tooltip = document.getElementById('tooltip');
 
 function getConnectedIds(nodeId) {
-  const set = new Set();
-  for (const { idx } of (nodeEdgeLookup[nodeId] || [])) {
-    const e = edgesData[idx];
-    if (e.source.id === nodeId) set.add(e.target.id);
-    else set.add(e.source.id);
+  const set=new Set();
+  for(const {idx} of (nodeEdgeLookup[nodeId]||[])){
+    const edge=edgesData[idx];
+    if(edge.source.id===nodeId)set.add(edge.target.id);
+    else if(edge.target.id===nodeId)set.add(edge.source.id);
   }
   return set;
 }
 
-function hoverNode(nodeId, event) {
-  hoveredNodeId = nodeId;
-  const node = nodeMap[nodeId];
-  const info = nodeMeshes[nodeId];
-  if (!node || !info) return;
-  const count = accessCounts[nodeId] || 0;
-  tooltip.style.display = 'block';
-  tooltip.innerHTML = `
-    <div class="tt-type">${escapeHtml(NODE_TYPE_TITLES[node.type]||node.type)}</div>
-    <div class="tt-label">${escapeHtml(node.label)}</div>
-    <div class="tt-cat" style="color:${colorsData[node.category]||'#888'}">${escapeHtml(CATEGORY_TITLES[node.category]||node.category)}</div>
-    ${count ? `<div class="tt-access">Обращений к узлу: ${count}</div>` : ''}
-  `;
-  tooltip.style.left = (event.clientX + 15) + 'px';
-  tooltip.style.top = (event.clientY - 10) + 'px';
-
-  const connected = getConnectedIds(nodeId);
-  for (const [id, inf] of Object.entries(nodeMeshes)) {
-    if (id === nodeId || connected.has(id)) {
-      inf.mesh.material.color.copy(inf.baseColor);
-    } else {
-      inf.mesh.material.color.copy(inf.baseColor).multiplyScalar(0.08);
-    }
-  }
-  const connEdges = new Set((nodeEdgeLookup[nodeId] || []).map(e => e.idx));
-  for (let i = 0; i < edgesData.length; i++) {
-    const j = i * 6;
-    const mult = connEdges.has(i) ? 3.5 : 0.08;
-    edgeColors[j]   = edgeBaseColors[j]   * mult;
-    edgeColors[j+1] = edgeBaseColors[j+1] * mult;
-    edgeColors[j+2] = edgeBaseColors[j+2] * mult;
-    edgeColors[j+3] = edgeBaseColors[j+3] * mult;
-    edgeColors[j+4] = edgeBaseColors[j+4] * mult;
-    edgeColors[j+5] = edgeBaseColors[j+5] * mult;
-  }
-  edgeColorAttr.needsUpdate = true;
-}
-
-function unhover() {
-  if (!hoveredNodeId) return;
-  hoveredNodeId = null;
-  tooltip.style.display = 'none';
-  for (const info of Object.values(nodeMeshes)) {
+function applyFocus(nodeId){
+  const connected=nodeId?getConnectedIds(nodeId):null;
+  for(const [id,info] of Object.entries(nodeMeshes)){
     info.mesh.material.color.copy(info.baseColor);
+    if(connected&&id!==nodeId&&!connected.has(id))
+      info.mesh.material.color.multiplyScalar(0.12);
   }
-  edgeColors.set(edgeBaseColors);
-  edgeColorAttr.needsUpdate = true;
+  if(!edgeColorAttr||!edgeBaseColors)return;
+  const highlighted=new Set(nodeId?(nodeEdgeLookup[nodeId]||[]).map(e=>e.idx):[]);
+  for(let i=0;i<edgesData.length;i++){
+    const factor=!nodeId?1:highlighted.has(i)?2.4:0.13;
+    const j=i*6;
+    for(let k=0;k<6;k++)edgeColors[j+k]=edgeBaseColors[j+k]*factor;
+  }
+  edgeColorAttr.needsUpdate=true;
 }
 
-container.addEventListener('mousemove', (event) => {
-  const rect = renderer.domElement.getBoundingClientRect();
-  mouseNDC.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  mouseNDC.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+function closeNodeCard(){
+  selectedNodeId=null;
+  document.getElementById('node-detail').hidden=true;
+  applyFocus(hoveredNodeId);
+}
 
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(raycastTargets);
-  if (hits.length > 0) {
-    const nid = meshToNodeId.get(hits[0].object);
-    if (nid && nid !== hoveredNodeId) { unhover(); hoverNode(nid, event); }
-    else if (nid) {
-      tooltip.style.left = (event.clientX + 15) + 'px';
-      tooltip.style.top = (event.clientY - 10) + 'px';
-    }
-  } else if (hoveredNodeId) {
-    unhover();
+function focusCameraOn(node){
+  const fromTarget=controls.target.clone();
+  const target=new THREE.Vector3(node.x||0,node.y||0,node.z||0);
+  const fromCamera=camera.position.clone();
+  const offset=fromCamera.clone().sub(fromTarget);
+  if(offset.length()<90)offset.set(160,110,220);
+  const goalCamera=target.clone().add(offset);
+  addAnimation(580,t=>{
+    const smooth=1-Math.pow(1-t,3);
+    controls.target.lerpVectors(fromTarget,target,smooth);
+    camera.position.lerpVectors(fromCamera,goalCamera,smooth);
+  },null,'focus-camera');
+}
+
+function openNodeCard(id){
+  const node=nodeMap[id];
+  if(!node){closeNodeCard();return;}
+  selectedNodeId=id;
+  const panel=document.getElementById('node-detail');
+  document.getElementById('detail-title').textContent=node.label||'Узел Сорюки';
+  document.getElementById('detail-status').textContent=[
+    CATEGORY_TITLES[node.category]||node.category,
+    NODE_TYPE_TITLES[node.type]||node.kind||'Запись',
+    node.status||'',
+    node.created_at||''
+  ].filter(Boolean).join(' · ');
+  document.getElementById('detail-summary').textContent=
+    node.description||'Дополнительное описание в базе данных отсутствует.';
+  const list=document.getElementById('detail-related');
+  list.replaceChildren();
+  const related=relatedNodes(id,edgesData,nodeMap,14);
+  if(!related.length){
+    const empty=document.createElement('li');
+    empty.textContent='Связанные узлы в текущем графе отсутствуют.';
+    list.appendChild(empty);
   }
+  for(const rel of related){
+    const li=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=rel.name;
+    button.title='Связь из SQLite: '+rel.relation;
+    button.addEventListener('click',()=>{
+      openNodeCard(rel.id);
+      const adjacent=nodeMap[rel.id];
+      if(adjacent)focusCameraOn(adjacent);
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  panel.hidden=false;
+  applyFocus(id);
+}
+
+document.getElementById('node-detail-close').addEventListener('click',closeNodeCard);
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'&&!document.getElementById('node-detail').hidden)
+    closeNodeCard();
 });
 
-container.addEventListener('click', (event) => {
-  if (!debugMode) return;
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(raycastTargets);
-  if (hits.length > 0) {
-    const nid = meshToNodeId.get(hits[0].object);
-    if (nid) handleDebugClick(nodeMap[nid]);
+function hoverNode(nodeId,event){
+  hoveredNodeId=nodeId;
+  const node=nodeMap[nodeId];
+  const info=nodeMeshes[nodeId];
+  if(!node||!info)return;
+  const count=accessCounts[nodeId]||0;
+  tooltip.style.display='block';
+  tooltip.innerHTML=`
+    <div class="tt-type">${escapeHtml(NODE_TYPE_TITLES[node.type]||node.type)}</div>
+    <div class="tt-label">${escapeHtml(node.label)}</div>
+    <div class="tt-cat">${escapeHtml(CATEGORY_TITLES[node.category]||node.category)}</div>
+    ${count?`<div class="tt-access">Обращений к узлу: ${count}</div>`:''}
+  `;
+  tooltip.style.left=(event.clientX+15)+'px';
+  tooltip.style.top=(event.clientY-10)+'px';
+  applyFocus(nodeId);
+}
+
+function unhover(){
+  hoveredNodeId=null;
+  tooltip.style.display='none';
+  applyFocus(selectedNodeId);
+}
+
+let lastRaycast=0;
+let clickOrigin=null;
+container.addEventListener('pointerdown',event=>{
+  if(event.button===0)clickOrigin={x:event.clientX,y:event.clientY};
+});
+container.addEventListener('pointermove',event=>{
+  if(event.pointerType==='touch')return;
+  if(performance.now()-lastRaycast<45)return; // Bounded GPU/CPU raycasts.
+  lastRaycast=performance.now();
+  const rect=renderer.domElement.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  mouseNDC.x=((event.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(raycastTargets,false);
+  const nodeId=hits.length?meshToNodeId.get(hits[0].object):null;
+  if(nodeId&&nodeId!==hoveredNodeId){unhover();hoverNode(nodeId,event);}
+  else if(nodeId){
+    tooltip.style.left=(event.clientX+15)+'px';
+    tooltip.style.top=(event.clientY-10)+'px';
+  }else if(hoveredNodeId)unhover();
+});
+container.addEventListener('pointerleave',()=>{clickOrigin=null;unhover();});
+container.addEventListener('click',event=>{
+  if(event.button!==0)return;
+  if(clickOrigin&&Math.hypot(event.clientX-clickOrigin.x,event.clientY-clickOrigin.y)>7){
+    clickOrigin=null;return; // Orbit drag is not a selection.
   }
+  clickOrigin=null;
+  const rect=renderer.domElement.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  mouseNDC.x=((event.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(raycastTargets,false);
+  if(!hits.length){if(!debugMode)closeNodeCard();return;}
+  const nodeId=meshToNodeId.get(hits[0].object);
+  if(!nodeId)return;
+  if(debugMode)handleDebugClick(nodeMap[nodeId]);
+  else openNodeCard(nodeId);
 });
 
 // ═══════════════════════════════════════
