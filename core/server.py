@@ -152,6 +152,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return {"items":cognition.causal_links()}
         if path=="/api/v5/evidence":
             return cognition.evidence_search(params.get("q",[""])[0])
+        if path=="/api/v5/hybrid":
+            return cognition.hybrid_search(params.get("q",[""])[0])
         if path=="/api/v5/reason":
             return cognition.reasoning_plan(params.get("q",[""])[0])
         if path=="/api/v5/growth/tasks":
@@ -180,7 +182,10 @@ class AppHandler(BaseHTTPRequestHandler):
         if path=="/api/memory":
             return store.add_memory(body.get("kind",""),body.get("text",""),body.get("confirmed",False))
         if path=="/api/memory/delete":
-            return {"deleted":store.delete_memory(body.get("id",""))}
+            deleted=store.delete_memory(body.get("id",""))
+            if deleted:
+                engine.v5.prune_orphan_embeddings()
+            return {"deleted":deleted}
         if path=="/api/timeline/delete":
             return {"deleted":store.delete_event(body.get("id",""))}
         if path=="/api/feedback/delete":
@@ -235,6 +240,10 @@ class AppHandler(BaseHTTPRequestHandler):
         if path=="/api/v5/embeddings/search":
             return {"items":cognition.vector_search(body.get("query",""),
                           body.get("confirmed",False),body.get("limit",6))}
+        if path=="/api/v5/hybrid":
+            return cognition.hybrid_search(body.get("query",""),body.get("limit",8),
+                                           body.get("use_cloud",False),
+                                           body.get("confirmed",False))
         if path=="/api/v5/growth/enqueue":
             return growth.enqueue(body.get("kind",""),body.get("confirmed",False))
         if path=="/api/v5/growth/run":
