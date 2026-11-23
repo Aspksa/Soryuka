@@ -52,3 +52,6 @@ jobs:
           node --check ui/app.js
           node --check ui/mirror.js
           node --check ui/mirror-original.js
+          node --check ui/graphics-settings.js
+      - name: Test graphics settings persistence and validation
+        run: node --test ui/graphics-settings.test.mjs
