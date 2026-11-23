@@ -59,3 +59,5 @@ jobs:
         run: node --test ui/graphics-settings.test.mjs
       - name: Test Soryuka 3D graph physics and event contracts
         run: node --test ui/graph-v2.test.mjs
+      - name: Test WebGL black-screen recovery diagnostics
+        run: node --test ui/mirror-bootstrap.test.mjs
