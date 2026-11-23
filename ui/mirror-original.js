@@ -79,7 +79,22 @@ let debugMode = false;
 let lastDebugNode = null;
 let showLabels = false;
 let refsHighlighted = false;
-const activeAnimations = [];
+const activeAnimations=[];
+const transientEffects=new Set();
+function trackTransient(dispose){
+  let active=true;
+  const clean=()=>{
+    if(!active)return;
+    active=false;
+    transientEffects.delete(clean);
+    dispose();
+  };
+  transientEffects.add(clean);
+  return clean;
+}
+function clearTransientEffects(){
+  for(const clean of [...transientEffects])clean();
+}
 
 let edgeMesh, edgeGeo;
 let edgePositions, edgeColors, edgeBaseColors, edgeColorAttr;
@@ -401,6 +416,9 @@ function findNodeById(targetPath) {
 // ═══════════════════════════════════════
 
 function clearGraph() {
+  // A graph refresh must not leak old point lights, sprites or GPU buffers.
+  clearTransientEffects();
+  activeAnimations.length=0;
   if (simulation) simulation.stop();
   if (edgeMesh) { scene.remove(edgeMesh); edgeGeo.dispose(); edgeMesh.material.dispose(); }
   for (const info of Object.values(nodeMeshes)) {
@@ -828,8 +846,12 @@ function pulseNode(nodeId, colorHex, durationMs) {
   const glow = info.glow;
   const origGlowScale = glow ? glow.scale.x : 0;
 
-  const light = new THREE.PointLight(new THREE.Color(colorHex), 3, baseR * 18);
+  const light=new THREE.PointLight(new THREE.Color(colorHex),3,baseR*18);
   scene.add(light);
+  const cleanLight=trackTransient(()=>{
+    scene.remove(light);
+    light.dispose();
+  });
 
   addAnimation(durationMs, (t) => {
     let sf;
@@ -858,8 +880,8 @@ function pulseNode(nodeId, colorHex, durationMs) {
     mat.emissive.copy(origEmissive);
     mat.emissiveIntensity = baseEI;
     info.mesh.scale.setScalar(baseR);
-    scene.remove(light); light.dispose();
-    if (glow) { glow.scale.setScalar(origGlowScale); glow.material.opacity = 0.5; }
+    cleanLight();
+    if(glow){glow.scale.setScalar(origGlowScale);glow.material.opacity=0.5;}
   }, 'pulse-' + nodeId);
 
   // Pulse connected edges
@@ -937,15 +959,17 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
       scene.add(particle);
       const light = new THREE.PointLight(new THREE.Color(colorHex), 0.5, 25);
       particle.add(light);
+      const cleanParticle=trackTransient(()=>{
+        scene.remove(particle);
+        geo.dispose();mat.dispose();light.dispose();
+      });
 
-      addAnimation(travelMs, (t) => {
+      addAnimation(travelMs,(t)=>{
         particle.position.copy(curve.getPoint(t));
         particle.scale.setScalar(1 - t * 0.7);
         mat.opacity = (0.9 - i * 0.05) * (1 - t * 0.5);
         light.intensity = 0.5 * (1 - t);
-      }, () => {
-        scene.remove(particle); geo.dispose(); mat.dispose(); light.dispose();
-      });
+      },cleanParticle);
     };
     if(i===0)spawnParticle();
     else addAnimation(i*stagger,()=>{},spawnParticle);
@@ -957,11 +981,14 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
   const pathMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.3 });
   const pathLine = new THREE.Line(pathGeo, pathMat);
   scene.add(pathLine);
+  const cleanPath=trackTransient(()=>{
+    scene.remove(pathLine);pathGeo.dispose();pathMat.dispose();
+  });
 
   const totalMs = travelMs + (numP - 1) * stagger + 800;
   addAnimation(totalMs, (t) => {
     if (t > 0.5) pathMat.opacity = 0.3 * (1 - (t - 0.5) / 0.5);
-  }, () => { scene.remove(pathLine); pathGeo.dispose(); pathMat.dispose(); });
+  },cleanPath);
 
   addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive);
 }
@@ -986,9 +1013,62 @@ function handleDebugClick(d) {
   lastDebugNode = d;
 }
 
-// ═══════════════════════════════════════
+/**
+ * Evidence motion is drawn ONLY along edges present in the real SQLite snapshot.
+ * Blue: owner-confirmed records fetched into the prompt; gold: answer was stored.
+ * This does not imply visibility into the model's internal reasoning.
+ */
+function animateRecordedRoute(route,color){
+  if(!Array.isArray(route)||route.length<2)return false;
+  const nodes=route.map(id=>nodeMeshes[id]);
+  if(nodes.some(x=>!x))return false;
+  const material=new THREE.SpriteMaterial({
+    map:glowTexture,color,transparent:true,opacity:.95,
+    blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false
+  });
+  const pulse=new THREE.Sprite(material);
+  pulse.scale.set(8,8,1);
+  scene.add(pulse);
+  const clean=trackTransient(()=>{scene.remove(pulse);material.dispose();});
+  const segments=route.length-1;
+  addAnimation(Math.max(850,segments*450),t=>{
+    const position=Math.min(segments-.00001,t*segments);
+    const segment=Math.floor(position),blend=position-segment;
+    pulse.position.lerpVectors(nodes[segment].mesh.position,
+      nodes[segment+1].mesh.position,blend);
+    pulse.scale.setScalar(8*(1-.5*t));
+    material.opacity=(1-t)*.95;
+  },clean);
+  return true;
+}
+function showRecordedAnswerStage(event){
+  if(event.source!=='sqlite_audit'||!['retrieval','response'].includes(event.phase))return;
+  const used=(event.targets||[]).filter(id=>id.startsWith('mem:')&&nodeMap[id]).slice(0,5);
+  const subtitle=document.getElementById('answer-stage');
+  if(event.phase==='retrieval'){
+    subtitle.textContent=used.length?
+      'Реальный запрос: в контекст извлечено '+used.length+' записей памяти.':
+      'Реальный запрос: поиск памяти начался; связанных записей нет.';
+    for(const id of used){
+      const route=graphRoute('core:soryuka',id,edgesData||[]);
+      animateRecordedRoute(route,'#6a8fff');
+      pulseNode(id,'#6a8fff',1800);
+    }
+  }else{
+    subtitle.textContent='Ответ получен и сохранён в SQLite. Путь — только по подтверждённым связям.';
+    for(const id of used){
+      const route=graphRoute(id,'core:soryuka',edgesData||[]);
+      animateRecordedRoute(route,'#e7b976');
+    }
+    if(event.session_node&&nodeMap[event.session_node])
+      animateRecordedRoute(graphRoute('core:soryuka',event.session_node,edgesData||[]),'#e7b976');
+    pulseNode('core:soryuka','#e7b976',1800);
+  }
+}
+
+// ═══════════════════════════════
 // Activity Feed
-// ═══════════════════════════════════════
+// ═══════════════════════════════
 
 const feedList = document.getElementById('feedList');
 const MAX_FEED = 20;
@@ -1039,6 +1119,7 @@ function connectWebSocket() {
     if (parsed.type === 'event') {
       const ev = parsed.data;
       addFeedItem(ev);
+      showRecordedAnswerStage(ev);
 
       if (ev.type === 'read') {
         const nid = findNodeById(ev.path);
