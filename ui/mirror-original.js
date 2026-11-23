@@ -8,6 +8,21 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {
+  GRAPHICS_DEFAULTS, GRAPHICS_STORAGE_KEY, normalizeGraphics,
+  readGraphics, saveGraphics, resetGraphics
+} from './graphics-settings.js';
+
+// Browser-local visual preferences; never written to SQLite or sent to Cloud.ru.
+function getGraphicsStorage(){
+  try { return window.localStorage; }
+  catch { return null; }
+}
+const graphicsStorage=getGraphicsStorage();
+let graphics=readGraphics(graphicsStorage);
+let animationClock=0;
+let previousFrame=0;
+let physicsProgress=0;
 
 /** Adapt Soryuka's actual SQLite graph to the original agent-mirror 3D renderer.
  * No fabricated memories, no OpenClaw watcher, no leaked Cloud.ru key.
@@ -87,7 +102,7 @@ renderer.setClearColor(0x0a0a0f);
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0008);
+scene.fog = new THREE.FogExp2(0x0a0a0f, graphics.fog);
 
 const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 1, 5000);
 camera.position.set(300, 200, 450);
@@ -99,13 +114,82 @@ controls.target.set(0, 0, 0);
 controls.minDistance = 50;
 controls.maxDistance = 2000;
 
-scene.add(new THREE.AmbientLight(0x334466, 3.5));
+const ambientLight = new THREE.AmbientLight(0x334466, 3.5);
+scene.add(ambientLight);
 const dirLight1 = new THREE.DirectionalLight(0x6688cc, 0.8);
 dirLight1.position.set(200, 400, 300);
 scene.add(dirLight1);
 const dirLight2 = new THREE.DirectionalLight(0xcc6644, 0.3);
 dirLight2.position.set(-200, -100, -300);
 scene.add(dirLight2);
+
+// Update real Three.js objects in place: no graph rebuild and no lost memory state.
+function applyGraphics(){
+  scene.fog.density=graphics.fog;
+  ambientLight.intensity=3.5*graphics.light;
+  dirLight1.intensity=0.8*graphics.light;
+  dirLight2.intensity=0.3*graphics.light;
+}
+function showGraphicsValues(){
+  const formats={
+    fog:v=>v.toFixed(5),
+    light:v=>Math.round(v*100)+'%',
+    speed:v=>v.toFixed(2)+'×'
+  };
+  for(const key of ['fog','light','speed']){
+    document.getElementById('graphics-'+key).value=String(graphics[key]);
+    document.getElementById('graphics-'+key+'-value').textContent=formats[key](graphics[key]);
+  }
+}
+function graphicsFeedback(saved,message){
+  const el=document.getElementById('graphics-save-status');
+  el.textContent=saved?message:'Применено временно: браузер запретил локальное сохранение.';
+}
+function initializeGraphicsPanel(){
+  const toggle=document.getElementById('graphics-toggle');
+  const panel=document.getElementById('graphics-panel');
+  const setOpen=open=>{
+    panel.hidden=!open;
+    toggle.setAttribute('aria-expanded',String(open));
+    if(open)document.getElementById('graphics-fog').focus();
+    else toggle.focus();
+  };
+  toggle.addEventListener('click',()=>setOpen(panel.hidden));
+  document.getElementById('graphics-close').addEventListener('click',()=>setOpen(false));
+  panel.addEventListener('keydown',ev=>{
+    if(ev.key==='Escape'){ev.preventDefault();setOpen(false);}
+  });
+  for(const key of ['fog','light','speed']){
+    document.getElementById('graphics-'+key).addEventListener('input',event=>{
+      graphics=normalizeGraphics({...graphics,[key]:Number(event.target.value)});
+      applyGraphics();
+      showGraphicsValues();
+      const result=saveGraphics(graphicsStorage,graphics);
+      graphicsFeedback(result.saved,'Сохранено в этом браузере · применяется сразу.');
+    });
+  }
+  document.getElementById('graphics-reset').addEventListener('click',()=>{
+    const result=resetGraphics(graphicsStorage);
+    graphics=result.settings;
+    applyGraphics();
+    showGraphicsValues();
+    graphicsFeedback(result.saved,'Восстановлены исходные настройки agent-mirror.');
+  });
+  window.addEventListener('storage',event=>{
+    if(event.key!==GRAPHICS_STORAGE_KEY&&event.key!==null)return;
+    graphics=readGraphics(graphicsStorage);
+    applyGraphics();
+    showGraphicsValues();
+    graphicsFeedback(!!graphicsStorage,'Настройки синхронизированы с другой вкладкой.');
+  });
+  applyGraphics();
+  showGraphicsValues();
+  graphicsFeedback(!!graphicsStorage,
+    JSON.stringify(graphics)===JSON.stringify(GRAPHICS_DEFAULTS)
+      ?'Исходные параметры · сохраняются при изменении.'
+      :'Загружены сохранённые настройки графики.');
+}
+initializeGraphicsPanel();
 
 const raycaster = new THREE.Raycaster();
 const mouseNDC = new THREE.Vector2(-999, -999);
@@ -192,7 +276,7 @@ function addAnimation(durationMs, updateFn, onCompleteFn, tag) {
     }
   }
   activeAnimations.push({
-    startTime: performance.now(), duration: durationMs,
+    startTime: animationClock, duration: durationMs,
     update: updateFn, onComplete: onCompleteFn || null, tag: tag || null
   });
 }
@@ -274,6 +358,9 @@ function buildGraph(data) {
     .force('x', d3.forceX(0).strength(0.03))
     .force('y', d3.forceY(0).strength(0.03))
     .force('z', d3.forceZ(0).strength(0.03));
+  // Drive simulation from our own clock so the speed control changes real node motion.
+  simulation.stop();
+  physicsProgress=0;
 
   // --- Edges (LineSegments + BufferGeometry) ---
   edgePositions = new Float32Array(edges.length * 6);
@@ -640,7 +727,7 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
   const numP = 8, stagger = 80, travelMs = 1200;
 
   for (let i = 0; i < numP; i++) {
-    setTimeout(() => {
+    const spawnParticle=() => {
       const pr = 0.4 + Math.random() * 0.4;
       const geo = new THREE.SphereGeometry(pr, 6, 6);
       const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.9 - i * 0.05 });
@@ -657,7 +744,9 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
       }, () => {
         scene.remove(particle); geo.dispose(); mat.dispose(); light.dispose();
       });
-    }, i * stagger);
+    };
+    if(i===0)spawnParticle();
+    else addAnimation(i*stagger,()=>{},spawnParticle);
   }
 
   // Fading curved path line
@@ -672,7 +761,7 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
     if (t > 0.5) pathMat.opacity = 0.3 * (1 - (t - 0.5) / 0.5);
   }, () => { scene.remove(pathLine); pathGeo.dispose(); pathMat.dispose(); });
 
-  setTimeout(onArrive, travelMs + (numP - 1) * stagger);
+  addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive);
 }
 
 // ═══════════════════════════════════════
@@ -877,8 +966,21 @@ window._rescan = function() {
 
 function animate() {
   requestAnimationFrame(animate);
-  const now = performance.now();
-  tickAnimations(now);
+  const now=performance.now();
+  // Cap long background-tab pauses; changing speed does not jump or reset the scene.
+  const delta=previousFrame?Math.max(0,Math.min(100,now-previousFrame)):16.67;
+  previousFrame=now;
+  animationClock+=delta*graphics.speed;
+  tickAnimations(animationClock);
+
+  // The original force simulation is now clocked by the same user-selected speed.
+  // At most four ticks per frame prevent CPU spikes when the tab resumes.
+  if(simulation){
+    physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
+    let ticks=Math.min(4,Math.floor(physicsProgress));
+    physicsProgress-=ticks;
+    while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+  }
   updatePositions();
   controls.update();
   renderer.render(scene, camera);
