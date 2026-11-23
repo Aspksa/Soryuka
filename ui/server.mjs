@@ -3,6 +3,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WebSocketServer } from 'ws';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const uiPort=Number(process.env.SORYUKA_UI_PORT||53555);
@@ -14,7 +15,11 @@ const staticFiles=new Map([
   ['/','index.html'],['/index.html','index.html'],
   ['/mirror.css','mirror.css'],['/mirror.js','mirror.js'],
   ['/console','console.html'],['/console.html','console.html'],
-  ['/style.css','style.css'],['/app.js','app.js']
+  ['/style.css','style.css'],['/app.js','app.js'],
+  ['/mirror-original.js','mirror-original.js'],
+  ['/vendor/three.module.js','node_modules/three/build/three.module.js'],
+  ['/vendor/three-addons/controls/OrbitControls.js','node_modules/three/examples/jsm/controls/OrbitControls.js'],
+  ['/vendor/d3-force-3d.min.js','node_modules/d3-force-3d/dist/d3-force-3d.min.js']
 ]);
 const contentType={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8'};
 
@@ -76,5 +81,91 @@ const server=http.createServer((req,res)=>{
     else send(res,200,bytes,type);
   });
 });
+
+// Original Agent Mirror browser uses a live WebSocket. This relay ONLY reads from
+// Python's token-authenticated SQLite API, keeping the Python process the sole API.
+const mirrorWss=new WebSocketServer({noServer:true,maxPayload:32_768,perMessageDeflate:false});
+const MAX_SOCKETS=8;
+server.on('upgrade',(req,socket,head)=>{
+  let pathname;
+  try{pathname=new URL(req.url||'/',selfOrigin).pathname;}catch{socket.destroy();return;}
+  const origin=req.headers.origin;
+  if(pathname!=='/mirror-ws'||mirrorWss.clients.size>=MAX_SOCKETS||
+     (origin&&origin!==selfOrigin)||!['127.0.0.1','localhost'].includes((req.headers.host||'').split(':')[0])){
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();return;
+  }
+  mirrorWss.handleUpgrade(req,socket,head,ws=>mirrorWss.emit('connection',ws,req));
+});
+function getLocal(pathname){
+  return new Promise((resolve,reject)=>{
+    const request=http.get({hostname:'127.0.0.1',port:apiPort,path:pathname,
+      timeout:9000,headers:{'X-Soryuka-Token':token}},response=>{
+      if(response.statusCode!==200){response.resume();reject(new Error('API '+response.statusCode));return;}
+      const chunks=[];let length=0;
+      response.on('data',part=>{
+        length+=part.length;
+        if(length>2_000_000){request.destroy(new Error('Graph too large'));return;}
+        chunks.push(part);
+      });
+      response.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch(err){reject(err);}});
+    });
+    request.on('error',reject);
+    request.on('timeout',()=>request.destroy(new Error('Timeout')));
+  });
+}
+function wsSend(ws,doc){
+  if(ws.readyState!==1)return;
+  // Avoid unbounded memory when tab is suspended or slow.
+  if(ws.bufferedAmount>1_000_000){ws.close(1009,'Slow graph client');return;}
+  ws.send(JSON.stringify(doc));
+}
+function eventForOriginal(item){
+  const map={read:'read',write:'write',delete:'write',link:'grep',learn:'search',growth:'search'};
+  const type=map[item.kind]||'read',targets=Array.isArray(item.targets)?item.targets.slice(0,10):[];
+  return {
+    type,origin_kind:item.kind,
+    path:targets[0]||'group:'+(item.category||'memory'),
+    timestamp:item.at,
+    query:'', // Never put private chat text into feed.
+    results:['search','grep'].includes(type)?targets.map(path=>({path,score:1})):[],
+    title:item.title
+  };
+}
+mirrorWss.on('connection',ws=>{
+  const state={audit:0,message:0,busy:false,initialized:false,ended:false};
+  let interval;
+  const sync=async()=>{
+    if(state.busy||ws.readyState!==1)return;
+    state.busy=true;
+    try{
+      if(!state.initialized){
+        const graph=await getLocal('/api/mirror/graph');
+        wsSend(ws,{type:'reload',data:graph});
+        state.audit=Math.max(0,Number(graph.cursor?.audit||0)-22);
+        state.message=Math.max(0,Number(graph.cursor?.message||0)-24);
+        state.initialized=true;
+      }
+      const result=await getLocal('/api/mirror/activity?audit_after='+state.audit+
+                                  '&message_after='+state.message);
+      const items=Array.isArray(result.items)?result.items:[];
+      state.audit=Number(result.cursor?.audit||state.audit);
+      state.message=Number(result.cursor?.message||state.message);
+      if(items.length){
+        const graph=await getLocal('/api/mirror/graph');
+        wsSend(ws,{type:'reload',data:graph});
+        for(const item of items.slice(-60))wsSend(ws,{type:'event',data:eventForOriginal(item)});
+      }
+    }catch(error){
+      // Keep existing frontend/SQLite usable while Python is restarting.
+      if(ws.readyState===1)wsSend(ws,{type:'error',error:'Локальный Python API недоступен'});
+    }finally{state.busy=false;}
+  };
+  void sync();
+  interval=setInterval(()=>void sync(),1800);
+  ws.on('close',()=>clearInterval(interval));
+  ws.on('error',()=>clearInterval(interval));
+});
+
 server.listen(uiPort,'127.0.0.1',()=>console.log('Soryuka UI ready: '+selfOrigin));
-process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
+process.on('SIGTERM',()=>{mirrorWss.close();server.close(()=>process.exit(0));});
