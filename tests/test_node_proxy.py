@@ -119,17 +119,17 @@ class NodeProxyTests(unittest.TestCase):
         with socket.create_connection(("127.0.0.1",self.ui_port),timeout=5) as sock:
             sock.settimeout(8)
             sock.sendall((
-                "GET /mirror-ws HTTP/1.1\\r\\n"
-                f"Host: 127.0.0.1:{self.ui_port}\\r\\n"
-                "Upgrade: websocket\\r\\nConnection: Upgrade\\r\\n"
-                f"Sec-WebSocket-Key: {key}\\r\\n"
-                "Sec-WebSocket-Version: 13\\r\\n"
-                f"Origin: {self.address}\\r\\n\\r\\n"
-            ).replace("\\r","\\r").replace("\\n","\\n").encode("ascii"))
+                "GET /mirror-ws HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{self.ui_port}\r\n"
+                "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                f"Origin: {self.address}\r\n\r\n"
+            ).encode("ascii"))
             data=b""
-            while b"\\r\\n\\r\\n" not in data:
+            while b"\r\n\r\n" not in data:
                 data+=sock.recv(4096)
-            headers,payload=data.split(b"\\r\\n\\r\\n",1)
+            headers,payload=data.split(b"\r\n\r\n",1)
             self.assertIn(b"101 Switching Protocols",headers)
             # Initial WebSocket text frame is a real graph snapshot from Python.
             while len(payload)<2:payload+=sock.recv(4096)
@@ -151,12 +151,12 @@ class NodeProxyTests(unittest.TestCase):
         import base64
         with socket.create_connection(("127.0.0.1",self.ui_port),timeout=5) as sock:
             sock.settimeout(4)
-            req=(f"GET /mirror-ws HTTP/1.1\\r\\nHost: 127.0.0.1:{self.ui_port}\\r\\n"
-                 "Upgrade: websocket\\r\\nConnection: Upgrade\\r\\n"
-                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\n"
-                 "Sec-WebSocket-Version: 13\\r\\n"
-                 "Origin: https://example.com\\r\\n\\r\\n")
-            sock.sendall(req.replace("\\r","\\r").replace("\\n","\\n").encode("ascii"))
+            req=(f"GET /mirror-ws HTTP/1.1\r\nHost: 127.0.0.1:{self.ui_port}\r\n"
+                 "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                 "Sec-WebSocket-Version: 13\r\n"
+                 "Origin: https://example.com\r\n\r\n")
+            sock.sendall(req.encode("ascii"))
             self.assertIn(b"403 Forbidden",sock.recv(1024))
 
     def test_chat_proxy_keeps_server_token_off_browser(self):
