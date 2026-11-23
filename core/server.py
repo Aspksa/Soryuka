@@ -122,10 +122,18 @@ class AppHandler(BaseHTTPRequestHandler):
             return engine.chat(body.get("message",""),body.get("session_id"),body.get("intent"))
         if path=="/api/session":
             return {"session_id":store.ensure_session()}
+        if path=="/api/session/delete":
+            return {"deleted":store.delete_session(body.get("id",""))}
+        if path=="/api/backup":
+            return store.create_backup(body.get("confirmed",False))
         if path=="/api/memory":
             return store.add_memory(body.get("kind",""),body.get("text",""),body.get("confirmed",False))
         if path=="/api/memory/delete":
             return {"deleted":store.delete_memory(body.get("id",""))}
+        if path=="/api/timeline/delete":
+            return {"deleted":store.delete_event(body.get("id",""))}
+        if path=="/api/feedback/delete":
+            return {"deleted":store.delete_feedback(body.get("id",""))}
         if path=="/api/timeline":
             return store.add_event(body.get("text",""),body.get("fiction"),body.get("confirmed",False))
         if path=="/api/goal":
