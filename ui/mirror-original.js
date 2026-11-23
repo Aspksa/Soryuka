@@ -954,7 +954,9 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
   mid2.x += (Math.random()-0.5)*off; mid2.y += (Math.random()-0.5)*off; mid2.z += (Math.random()-0.5)*off;
   const curve = new THREE.CatmullRomCurve3([from, mid1, mid2, to]);
 
-  const numP = 8, stagger = 80, travelMs = 1200;
+  // Scale particle counts to FPS tier; keep event rendering bounded.
+  const numP=qualityLevel==='low'?2:qualityLevel==='medium'?4:6;
+  const stagger=85,travelMs=1100;
 
   for (let i = 0; i < numP; i++) {
     const spawnParticle=() => {
@@ -1046,6 +1048,65 @@ function addFeedItem(event) {
 }
 
 // ═══════════════════════════════════════
+// Real answer context and verified SQLite connection events
+// ═══════════════════════════════════════
+function showAnswerRoute(event){
+  // No synthetic "thinking steps": these IDs were actually placed into the
+  // request's local prompt context or audited at successful response save.
+  if(event.context_kind!=='selected_for_prompt'||
+     !['request_started','response_saved'].includes(event.phase))return;
+  const known=new Set(Object.keys(nodeMap));
+  const ids=verifiedEventTargets(event,known,8);
+  const panel=document.getElementById('answer-route');
+  const phase=document.getElementById('route-phase');
+  const list=document.getElementById('route-source-list');
+  const finished=event.phase==='response_saved';
+  panel.hidden=false;
+  phase.textContent=finished
+    ?'Ответ сохранён. Подсвечены записи, предоставленные в контексте запроса, а не скрытые мысли модели.'
+    :'Запрос выполняется. Это записи, выбранные Python для контекста ответа.';
+  list.replaceChildren();
+  if(!ids.length){
+    const li=document.createElement('li');
+    li.textContent='В отображаемом графе нет записей, выбранных для контекста.';
+    list.appendChild(li);
+  }
+  for(const id of ids){
+    const node=nodeMap[id];
+    const li=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=node.label||id;
+    button.title='Перейти к реальному источнику';
+    button.addEventListener('click',()=>{openNodeCard(id);focusCameraOn(node);});
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  const origin=nodeMap['core:soryuka'];
+  if(origin){
+    pulseNode(origin.id,finished?'#54d8bc':'#e1bb78',1400);
+    for(const id of ids.slice(0,qualityLevel==='low'?1:3)){
+      const node=nodeMap[id];
+      if(!node)continue;
+      if(finished)animateParticleTrail(node,origin,'#54d8bc',()=>pulseNode(origin.id,'#54d8bc',750));
+      else animateParticleTrail(origin,node,'#e1bb78',()=>pulseNode(id,'#e1bb78',750));
+    }
+  }
+}
+function showVerifiedLinkTrail(event){
+  if(event.type!=='link')return;
+  const ids=verifiedEventTargets(event,new Set(Object.keys(nodeMap)),2);
+  if(ids.length!==2)return;
+  const from=nodeMap[ids[0]],to=nodeMap[ids[1]];
+  if(!from||!to)return;
+  // Check the exact link exists in the current local SQLite graph.
+  const confirmed=edgesData.some(e=>
+    (e.source.id===from.id&&e.target.id===to.id)||
+    (e.source.id===to.id&&e.target.id===from.id));
+  if(confirmed)animateParticleTrail(from,to,'#22d3ee',()=>pulseNode(to.id,'#22d3ee',900));
+}
+
+// ═══════════════════════════════════════
 // WebSocket
 // ═══════════════════════════════════════
 
@@ -1063,10 +1124,17 @@ function connectWebSocket() {
     try { parsed = JSON.parse(msg.data); } catch { return; }
 
     if (parsed.type === 'reload') { buildGraph(adaptGraph(parsed.data)); return; }
+    if (parsed.type === 'error') {
+      document.getElementById('route-phase').textContent=
+        'Python API временно недоступен. События обновятся после восстановления.';
+      return;
+    }
 
     if (parsed.type === 'event') {
       const ev = parsed.data;
       addFeedItem(ev);
+      showAnswerRoute(ev);
+      showVerifiedLinkTrail(ev);
 
       if (ev.type === 'read') {
         const nid = findNodeById(ev.path);
