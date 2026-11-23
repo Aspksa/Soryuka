@@ -13,7 +13,6 @@ if(!token){ console.error('SORYUKA_API_TOKEN missing: run launch.py'); process.e
 const selfOrigin='http://127.0.0.1:'+uiPort;
 const staticFiles=new Map([
   ['/','index.html'],['/index.html','index.html'],
-  ['/mirror.css','mirror.css'],['/mirror.js','mirror.js'],
   ['/console','console.html'],['/console.html','console.html'],
   ['/style.css','style.css'],['/app.js','app.js'],
   ['/mirror-original.js','mirror-original.js'],
@@ -22,6 +21,11 @@ const staticFiles=new Map([
   ['/graphics-settings.js','graphics-settings.js'],
   ['/vendor/three.module.js','node_modules/three/build/three.module.js'],
   ['/vendor/three-addons/controls/OrbitControls.js','node_modules/three/examples/jsm/controls/OrbitControls.js'],
+  ['/vendor/d3-quadtree.min.js','node_modules/d3-quadtree/dist/d3-quadtree.min.js'],
+  ['/vendor/d3-binarytree.min.js','node_modules/d3-binarytree/dist/d3-binarytree.min.js'],
+  ['/vendor/d3-octree.min.js','node_modules/d3-octree/dist/d3-octree.min.js'],
+  ['/vendor/d3-dispatch.min.js','node_modules/d3-dispatch/dist/d3-dispatch.min.js'],
+  ['/vendor/d3-timer.min.js','node_modules/d3-timer/dist/d3-timer.min.js'],
   ['/vendor/d3-force-3d.min.js','node_modules/d3-force-3d/dist/d3-force-3d.min.js']
 ]);
 const contentType={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8'};

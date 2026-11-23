@@ -174,7 +174,10 @@ class MirrorUiTests(unittest.TestCase):
         self.assertIn('id="canvas-container"',html)
         self.assertIn('id="feedList"',html)
         self.assertIn('/mirror-original.js',html)
-        for required in ('soryuka-engine-message','render-status','node-detail',
+        for old in ('/mirror.js','/mirror.css'):
+            self.assertNotIn(old,html)
+            self.assertFalse((ROOT/'ui'/old.lstrip('/')).exists())
+        for required in ('soryuka-engine-message','soryuka-engine-retry','render-status','node-detail',
                          'detail-related','answer-route','route-source-list',
                          '/mirror-bootstrap.js'):
             self.assertIn(required,html)

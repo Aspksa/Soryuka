@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>霜琉華 — Сорюка · Живая карта памяти</title>
+<script src="/vendor/d3-quadtree.min.js"></script>
+<script src="/vendor/d3-binarytree.min.js"></script>
+<script src="/vendor/d3-octree.min.js"></script>
+<script src="/vendor/d3-dispatch.min.js"></script>
+<script src="/vendor/d3-timer.min.js"></script>
 <script src="/vendor/d3-force-3d.min.js"></script>
 <style>
 /* Fonts kept local: no Google Fonts, no external requests. */
@@ -204,6 +209,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
  .header .stats{display:none}
  .feed-header{font-size:10px;padding:10px}
 }
+#soryuka-engine-retry{background:#3a3021;color:#efd2a1;border:1px solid #8b7147;border-radius:6px;padding:9px 12px;cursor:pointer;margin-right:12px}
 </style>
 </head>
 <body>
@@ -276,7 +282,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <div class="ws-status disconnected" id="wsStatus">ОЖИДАНИЕ СВЯЗИ</div>
 <div id="soryuka-engine-error" role="alert" hidden>
 <h3>Сорюка · Диагностика графики</h3>
-<p id="soryuka-engine-message">3D-движок не загружен. Проверь WebGL и локальные библиотеки.</p>
+<p id="soryuka-engine-message">3D-движок не загружен. Проверь WebGL и локальные библиотеки.</p><button id="soryuka-engine-retry" type="button">Повторить запуск</button>
 <a href="/console.html">Перейти в чат Сорюки</a></div>
 
 <div id="canvas-container"></div>

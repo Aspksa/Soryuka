@@ -1357,6 +1357,25 @@ function animate(){
     console.error('Soryuka WebGL render failure',error);
   }
 }
+// Read-only browser observability for real WebGL regression tests.
+// Exposes render/graph state only, no secret, chat body or hidden model thoughts.
+window.__soryukaDiagnostics=()=>{
+  const visible=(nodesData||[]).filter(n=>nodeMeshes[n.id]?.mesh.visible);
+  const core=visible.find(n=>n.type==='core')||visible.find(n=>n.type==='category')||visible[0];
+  const rect=renderer.domElement.getBoundingClientRect();
+  let coreScreen=null;
+  if(core && rect.width>0 && rect.height>0){
+    const projected=nodeMeshes[core.id].mesh.position.clone().project(camera);
+    coreScreen={
+      x:Math.round(rect.left+(projected.x+1)*rect.width/2),
+      y:Math.round(rect.top+(1-projected.y)*rect.height/2)
+    };
+  }
+  return {webgl:!renderDisabled,ready:renderReady,
+    totalNodes:nodesData?.length||0,visibleNodes:visible.length,
+    coreScreen,fogDensity:scene.fog.density,
+    fps:renderFps,quality:qualityLevel,cardOpen:Boolean(selectedNodeId)};
+};
 animate();
 
 // ═══════════════════════════════════════

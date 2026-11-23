@@ -4,6 +4,8 @@
   const message=document.getElementById('soryuka-engine-message');
   const status=document.getElementById('render-status');
   let ready=false;
+  const retry=document.getElementById('soryuka-engine-retry');
+  retry?.addEventListener('click',()=>window.location.reload());
   const show=reason=>{
     if(ready&&reason!=='webglcontextlost')return;
     if(message)message.textContent=reason;
