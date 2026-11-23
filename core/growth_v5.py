@@ -147,8 +147,20 @@ class GrowthV5:
                 "auto_generated_new_facts":False}
 
     def _recommendations(self)->dict:
-        council=self.cap.development_council()
-        return {"suggestions":council[:10],"requires_owner_approval":True}
+        council=[{**x,"kind":"goal_candidate"} for x in self.cap.development_council()]
+        # Skill Forge is proposal-only: zero invented benchmark scores.
+        with self.store.db() as c:
+            problems=c.execute("""SELECT a.skill,COUNT(*) AS mistakes,
+                COUNT(DISTINCT a.goal_id) AS goals FROM academy_assessments a
+                WHERE a.passed=0 GROUP BY a.skill HAVING COUNT(*)>=2 LIMIT 6""").fetchall()
+        methods=[]
+        for p in problems:
+            methods.append({"kind":"strategy_candidate","skill":p["skill"],
+                "title":"Пошаговая проверка перед ответом",
+                "reason":f"{p['mistakes']} несовпадений с эталоном на {p['goals']} целях",
+                "trial_plan":"Сравнить не менее 5 контрольных ответов с исходным методом",
+                "requires_owner_supplied_benchmark":True,"no_automatic_application":True})
+        return {"suggestions":(council+methods)[:12],"requires_owner_approval":True}
 
     def _execute(self,kind:str)->dict:
         if kind=="memory_review":return self._review_memory()
