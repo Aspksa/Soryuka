@@ -382,7 +382,7 @@ function getHeatColor(count) {
 // Animation System
 // ═══════════════════════════════════════
 
-function addAnimation(durationMs, updateFn, onCompleteFn, tag) {
+function addAnimation(durationMs, updateFn, onCompleteFn, tag, cancelOnClear=false) {
   if (tag) {
     for (let i = activeAnimations.length - 1; i >= 0; i--) {
       if (activeAnimations[i].tag === tag) {
@@ -393,7 +393,8 @@ function addAnimation(durationMs, updateFn, onCompleteFn, tag) {
   }
   activeAnimations.push({
     startTime: animationClock, duration: durationMs,
-    update: updateFn, onComplete: onCompleteFn || null, tag: tag || null
+    update: updateFn, onComplete: onCompleteFn || null, tag: tag || null,
+    cancelOnClear
   });
 }
 
@@ -428,7 +429,8 @@ function clearGraph() {
   if (simulation) simulation.stop();
   // Complete temporary lights and trails before removing their meshes.
   for(const animation of activeAnimations.splice(0)){
-    if(animation.onComplete)animation.onComplete();
+    // Cleanup completed materials/lights but never spawn delayed effects when cleared.
+    if(!animation.cancelOnClear && animation.onComplete)animation.onComplete();
   }
   if (edgeMesh) { scene.remove(edgeMesh); edgeGeo.dispose(); edgeMesh.material.dispose(); }
   for (const info of Object.values(nodeMeshes)) {
@@ -588,7 +590,7 @@ function buildGraph(data) {
     addAnimation(2100,()=>{},()=>{
       activeGrowthIds.clear();
       if(renderReady)applyAdaptiveLOD();
-    });
+    },null,true);
     const limited=born.slice(0,6);
     addAnimation(500,()=>{},()=>{
       for(const id of limited){
@@ -601,7 +603,7 @@ function buildGraph(data) {
           if(parent && nodeMap[parent.id])animateParticleTrail(parent,node,'#c8a36d',()=>{});
         }
       }
-    });
+    },null,true);
   }
 }
 
@@ -991,7 +993,7 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
       });
     };
     if(i===0)spawnParticle();
-    else addAnimation(i*stagger,()=>{},spawnParticle);
+    else addAnimation(i*stagger,()=>{},spawnParticle,null,true);
   }
 
   // Fading curved path line
@@ -1006,7 +1008,7 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
     if (t > 0.5) pathMat.opacity = 0.3 * (1 - (t - 0.5) / 0.5);
   }, () => { scene.remove(pathLine); pathGeo.dispose(); pathMat.dispose(); });
 
-  addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive);
+  addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive,null,true);
 }
 
 // ═══════════════════════════════════════
