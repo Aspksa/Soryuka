@@ -652,7 +652,89 @@ function updatePositions() {
 // Interaction (Raycaster, Hover, Click)
 // ═══════════════════════════════════════
 
-const tooltip = document.getElementById('tooltip');
+const tooltip=document.getElementById('tooltip');
+const nodeCard=document.getElementById('node-card');
+const nodeCardClose=document.getElementById('node-card-close');
+const RELATION_TITLES={
+  contains:'Содержит',category:'В разделе',canon:'Канон',message:'Диалог',
+  episode:'Эпизод',skill:'Навык',related:'Связано',cause_claim:'Причинная гипотеза'
+};
+const STATUS_TITLES={
+  owner_confirmed:'Подтверждено владельцем',
+  owner_approved:'Одобрено владельцем',
+  owner_disputed:'Оспорено владельцем · требует проверки',
+  local:'Локальная запись',real_file:'Файл канона',
+  canon:'Защищённое ядро',fiction:'Художественное событие'
+};
+function highlightConnections(nodeId){
+  const connected=nodeId?getConnectedIds(nodeId):new Set();
+  for(const [id,info] of Object.entries(nodeMeshes)){
+    info.mesh.material.color.copy(info.baseColor);
+    if(nodeId&&id!==nodeId&&!connected.has(id))
+      info.mesh.material.color.multiplyScalar(0.12);
+  }
+  const indexes=new Set((nodeEdgeLookup[nodeId]||[]).map(e=>e.idx));
+  for(let i=0;i<(edgesData||[]).length;i++){
+    const gain=!nodeId?1:indexes.has(i)?2.3:0.12;
+    const j=i*6;
+    for(let k=0;k<6;k++)edgeColors[j+k]=edgeBaseColors[j+k]*gain;
+  }
+  if(edgeColorAttr)edgeColorAttr.needsUpdate=true;
+}
+function renderNodeCard(id){
+  const node=nodeMap[id];
+  if(!node)return;
+  nodeCard.hidden=false;
+  document.getElementById('node-card-heading').textContent=node.label||'Запись Сорюки';
+  document.getElementById('node-card-type').textContent=
+    (CATEGORY_TITLES[node.category]||node.category)+' · '+
+    (NODE_TYPE_TITLES[node.type]||node.kind||'Запись');
+  document.getElementById('node-card-status').textContent=
+    STATUS_TITLES[node.status]||node.status||'Только локальные данные SQLite';
+  document.getElementById('node-card-detail').textContent=
+    node.description||'Дополнительных сведений в этой записи нет.';
+  const list=document.getElementById('node-card-links');
+  list.replaceChildren();
+  const neighbors=neighborsFor(id,edgesData||[]);
+  if(!neighbors.length){
+    const li=document.createElement('li');
+    li.textContent='Подтверждённых связей пока нет.';
+    list.appendChild(li);
+  }
+  for(const {id:other,relation} of neighbors){
+    const linked=nodeMap[other];
+    if(!linked)continue;
+    const li=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=(RELATION_TITLES[relation]||relation)+': '+(linked.label||other);
+    button.addEventListener('click',()=>openNodeCard(other));
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  const source=id.startsWith('canon:')?'Файл канона Сорюки':'Запись локального графа SQLite';
+  document.getElementById('node-card-source').textContent=
+    source+(node.created_at?' · '+node.created_at:'');
+}
+function openNodeCard(id){
+  if(!nodeMap[id])return;
+  selectedNodeId=id;
+  renderNodeCard(id);
+  highlightConnections(id);
+  const pos=nodeMeshes[id]?.mesh.position;
+  if(pos){
+    controls.target.lerp(pos,0.34);
+    controls.update();
+  }
+}
+nodeCardClose.addEventListener('click',()=>{
+  nodeCard.hidden=true;
+  selectedNodeId=null;
+  highlightConnections(hoveredNodeId);
+});
+nodeCard.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'){ev.preventDefault();nodeCardClose.click();}
+});
 
 function getConnectedIds(nodeId) {
   const set = new Set();
@@ -680,37 +762,14 @@ function hoverNode(nodeId, event) {
   tooltip.style.left = (event.clientX + 15) + 'px';
   tooltip.style.top = (event.clientY - 10) + 'px';
 
-  const connected = getConnectedIds(nodeId);
-  for (const [id, inf] of Object.entries(nodeMeshes)) {
-    if (id === nodeId || connected.has(id)) {
-      inf.mesh.material.color.copy(inf.baseColor);
-    } else {
-      inf.mesh.material.color.copy(inf.baseColor).multiplyScalar(0.08);
-    }
-  }
-  const connEdges = new Set((nodeEdgeLookup[nodeId] || []).map(e => e.idx));
-  for (let i = 0; i < edgesData.length; i++) {
-    const j = i * 6;
-    const mult = connEdges.has(i) ? 3.5 : 0.08;
-    edgeColors[j]   = edgeBaseColors[j]   * mult;
-    edgeColors[j+1] = edgeBaseColors[j+1] * mult;
-    edgeColors[j+2] = edgeBaseColors[j+2] * mult;
-    edgeColors[j+3] = edgeBaseColors[j+3] * mult;
-    edgeColors[j+4] = edgeBaseColors[j+4] * mult;
-    edgeColors[j+5] = edgeBaseColors[j+5] * mult;
-  }
-  edgeColorAttr.needsUpdate = true;
+  highlightConnections(nodeId);
 }
 
 function unhover() {
   if (!hoveredNodeId) return;
   hoveredNodeId = null;
   tooltip.style.display = 'none';
-  for (const info of Object.values(nodeMeshes)) {
-    info.mesh.material.color.copy(info.baseColor);
-  }
-  edgeColors.set(edgeBaseColors);
-  edgeColorAttr.needsUpdate = true;
+  highlightConnections(selectedNodeId);
 }
 
 container.addEventListener('mousemove', (event) => {
@@ -732,14 +791,22 @@ container.addEventListener('mousemove', (event) => {
   }
 });
 
-container.addEventListener('click', (event) => {
-  if (!debugMode) return;
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(raycastTargets);
-  if (hits.length > 0) {
-    const nid = meshToNodeId.get(hits[0].object);
-    if (nid) handleDebugClick(nodeMap[nid]);
-  }
+let dragStart=null;
+container.addEventListener('pointerdown',event=>{
+  dragStart={x:event.clientX,y:event.clientY};
+});
+container.addEventListener('click',event=>{
+  if(dragStart&&Math.hypot(event.clientX-dragStart.x,event.clientY-dragStart.y)>6)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouseNDC.x=((event.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(raycastTargets);
+  if(!hits.length)return;
+  const id=meshToNodeId.get(hits[0].object);
+  if(!id||!nodeMap[id])return;
+  openNodeCard(id);
+  if(debugMode)handleDebugClick(nodeMap[id]);
 });
 
 // ═══════════════════════════════════════
