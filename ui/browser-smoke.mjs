@@ -68,10 +68,15 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
   const uncaught=[];
   page.on('pageerror',error=>uncaught.push(error.message));
+  page.on('console',message=>{
+    if(message.type()==='error')uncaught.push('Console: '+message.text());
+  });
   await page.goto(origin,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__soryukaDiagnostics?.().totalNodes>0,
     {timeout:30000});
   const diagnostics=await page.evaluate(()=>window.__soryukaDiagnostics());
+  console.log('WebGL initial diagnostics:',JSON.stringify(diagnostics),
+    'browser errors:',JSON.stringify(uncaught));
   assert.equal(diagnostics.webgl,true);
   assert.ok(diagnostics.totalNodes>=7);
   assert.ok(diagnostics.visibleNodes>=7);
