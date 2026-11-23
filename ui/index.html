@@ -150,6 +150,41 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
   .graphics-label{flex-wrap:wrap}.graphics-settings p{font-size:9px}}
 @media(max-height:650px){.graphics-settings{top:80px;max-height:calc(100dvh - 100px)}}
 
+/* Soryuka GPU diagnostics, node details and live answer stages. */
+.scene-status{font-size:9px;letter-spacing:1px;color:#c1ad7d;margin-left:12px}
+.scene-status-error{color:#fd9d9b}
+#soryuka-engine-error{width:min(540px,90vw);inset:25% auto auto 50%;
+  transform:translateX(-50%);max-height:60vh;overflow:auto}
+#soryuka-engine-error h2{font-size:17px;color:#f2dbad;margin-bottom:12px}
+#soryuka-engine-error p{color:#c7d2ea;line-height:1.65;font-size:13px;margin-bottom:16px}
+.soryuka-error-actions{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap}
+.soryuka-error-actions button{background:#352816;color:#efd0a2;padding:8px 12px;border:1px solid #665132;border-radius:7px;cursor:pointer}
+.node-card[hidden]{display:none}
+.node-card{position:fixed;top:15%;left:22px;z-index:24;width:min(370px,calc(100vw - 345px));
+  max-height:70vh;overflow:auto;padding:17px 19px;border:1px solid #413920;
+  background:#10131bef;backdrop-filter:blur(16px);box-shadow:0 18px 55px #0009;
+  border-radius:12px;font-size:12px;color:#d4dbea}
+.node-card-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.node-card h2{font-size:15px;line-height:1.3;color:#efd1a1;overflow-wrap:anywhere}
+.node-card h3{font-size:11px;color:#c0ab84;letter-spacing:.06em;margin:14px 0 8px}
+.node-card-header button{font-size:22px;line-height:1;color:#c2c7d4;border:0;background:transparent;cursor:pointer}
+.node-card-subtitle{margin:5px 0 12px;color:#8796b7;font-size:11px}
+.node-card-status{color:#e6ac75;margin:7px 0}
+.node-card-detail{line-height:1.6;color:#bdc7df;overflow-wrap:anywhere}
+.node-card-links{padding-left:18px;display:grid;gap:7px;margin:0;color:#8b9dc1;line-height:1.5}
+.node-card-links button{background:none;border:0;color:#91baff;text-align:left;cursor:pointer;
+  font:inherit;overflow-wrap:anywhere;padding:0}
+.node-card-source{font-size:10px;color:#7b89a8;margin-top:16px}
+.perf-status{position:fixed;bottom:48px;right:320px;z-index:11;color:#8193b1;
+  font:10px Consolas,monospace;background:#0b0c14bb;border-radius:5px;padding:5px}
+.answer-stage{position:fixed;bottom:72px;left:20px;z-index:11;max-width:40vw;
+  background:#10131cc7;border:1px solid #262c41;border-radius:8px;padding:9px 12px;
+  font-size:11px;color:#afbed5;pointer-events:none}
+@media(max-width:800px){.node-card{width:min(300px,calc(100vw - 265px))}
+ .perf-status{right:250px}.answer-stage{max-width:40vw}}
+@media(max-width:560px){.node-card{left:6px;top:80px;width:calc(100vw - 198px);padding:10px}
+ .perf-status{right:185px;bottom:50px}.answer-stage{font-size:9px;max-width:48vw;bottom:70px}}
+
 /* Local Soryuka extras: original upstream palette/layout retained. */
 .soryuka-feed-footer {padding:14px 17px 17px;border-top:1px solid #1a1a25;background:#0d0d14;color:#6f7689;font-size:11px;line-height:1.5}
 .soryuka-feed-footer p {font-size:10px;line-height:1.6;color:#575e70;margin:8px 0 11px}
@@ -185,7 +220,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 
 <div class="header">
   <div>
-    <h1>СОРЮКА · КАРТА ПАМЯТИ <span class="live-badge"><span class="live-dot"></span> РАБОТАЕТ</span></h1>
+    <h1>СОРЮКА · КАРТА ПАМЯТИ <span class="live-badge"><span class="live-dot"></span> РАБОТАЕТ</span><span id="scene-status" class="scene-status" role="status">3D ЗАГРУЗКА</span></h1>
     <div class="subtitle">Живая трёхмерная карта локальной памяти</div>
   </div>
   <div class="stats">
@@ -231,9 +266,29 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 
 <div class="legend" id="legend"></div>
 <div class="tooltip" id="tooltip"></div>
+<section class="node-card" id="node-card" aria-label="Карточка записи и её подтверждённые связи" hidden>
+  <div class="node-card-header">
+    <h2 id="node-card-heading">Узел памяти Сорюки</h2>
+    <button id="node-card-close" type="button" aria-label="Закрыть карточку">×</button>
+  </div>
+  <p id="node-card-type" class="node-card-subtitle"></p>
+  <p id="node-card-status" class="node-card-status"></p>
+  <p id="node-card-detail" class="node-card-detail"></p>
+  <h3>Связанные записи из SQLite</h3>
+  <ul id="node-card-links" class="node-card-links"></ul>
+  <p id="node-card-source" class="node-card-source"></p>
+</section>
 <div class="ws-status disconnected" id="wsStatus">ОЖИДАНИЕ СВЯЗИ</div>
-<div id="soryuka-engine-error" role="alert" hidden>3D-движок не загружен. Проверь локальные библиотеки и запуск START-SORYUKA.bat.
-<a href="/console.html">Перейти в чат</a></div>
+<div id="perf-status" class="perf-status" aria-live="off">WebGL · ожидание данных</div>
+<div id="answer-stage" class="answer-stage" role="status" aria-live="polite">Карта отображает только реальные обращения к памяти.</div>
+<section id="soryuka-engine-error" role="alert" aria-labelledby="soryuka-error-heading" hidden>
+  <h2 id="soryuka-error-heading">Не удалось показать 3D-карту</h2>
+  <p id="soryuka-error-description">Проверь аппаратное ускорение WebGL и локальные библиотеки.</p>
+  <div class="soryuka-error-actions">
+    <button id="soryuka-error-retry" type="button">Повторить запуск</button>
+    <a href="/console.html">Открыть чат Сорюки</a>
+  </div>
+</section>
 
 <div id="canvas-container"></div>
 
@@ -261,6 +316,6 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 }
 </script>
 
-<script type="module" src="/mirror-original.js"></script>
+<script type="module" src="/mirror-boot.js"></script>
 </body>
 </html>
