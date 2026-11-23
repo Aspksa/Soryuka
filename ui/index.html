@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080809">
+<title>霜琉華 — Soryuka</title>
+<link rel="stylesheet" href="/style.css">
+<script defer src="/app.js"></script>
+</head>
+<body>
+<main class="layout">
+  <header class="header">
+    <div class="brand"><span class="seal" aria-hidden="true">霜</span><div><strong>霜琉華 <span>Soryuka</span></strong><small>Living Personality 3.0</small></div></div>
+    <div class="right-status"><span id="status-dot" class="status-dot"></span><span id="status">Проверка подключения…</span><button id="new-chat" type="button" class="subtle">Новый разговор</button></div>
+  </header>
+  <section class="scene" aria-label="Художественная визуализация девяти хвостов Сорюки">
+    <canvas id="soul-canvas" aria-hidden="true"></canvas>
+    <div class="scene-copy">
+      <span class="overline">九尾霜華女帝</span>
+      <h1>Сорюка</h1>
+      <p>Девятихвостая императрица<br>льда и золотого пламени</p>
+      <div class="scene-meta"><span id="emotional-state">Спокойствие</span><span>9 хвостов</span><span>Одна душа персонажа</span></div>
+    </div>
+    <p class="asset-note">Схематические хвосты Canvas · оригинальный PNG-аватар можно добавить позднее</p>
+  </section>
+  <section class="conversation" aria-label="Чат с Сорюкой">
+    <div id="messages" class="messages" role="log" aria-live="polite">
+      <div class="placeholder"><strong>Мой хозяин, с возвращением.</strong><p>Я готова к беседе. Напиши мне — и мы начнём новую историю.</p></div>
+    </div>
+    <form id="chat-form" class="composer">
+      <label for="message" class="sr-only">Сообщение</label>
+      <textarea id="message" maxlength="6000" rows="2" placeholder="Напиши Сорюке…" required></textarea>
+      <div class="composer-bottom">
+        <label class="selectwrap">Режим <select id="intent">
+          <option value="greeting">Нежный</option>
+          <option value="affection">Любовь</option>
+          <option value="compliment">Игривый</option>
+          <option value="creative">Легенда</option>
+          <option value="technical">Работа</option>
+          <option value="learning">Обучение</option>
+          <option value="serious">Серьёзный</option>
+        </select></label>
+        <button id="send" class="gold-button" type="submit">Отправить <span aria-hidden="true">✦</span></button>
+      </div>
+    </form>
+  </section>
+  <section class="management">
+    <details>
+      <summary>Память · только с твоего разрешения</summary>
+      <p>Диалоги сохраняются локально в SQLite. Отдельные личные сведения запоминаются только после явного подтверждения.</p>
+      <form id="memory-form" class="compact-form">
+        <select id="memory-kind"><option value="moment">Тёплый момент</option><option value="preference">Предпочтение</option><option value="tradition">Традиция</option><option value="fact">Факт</option></select>
+        <input id="memory-text" required maxlength="1500" placeholder="Что запомнить?">
+        <label class="consent"><input type="checkbox" id="memory-confirm" required> Разрешаю сохранить в памяти</label>
+        <button type="submit">Запомнить</button>
+      </form>
+      <div id="memories" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Саморазвитие · цели и реальные оценки</summary>
+      <p>Никакой скрытой фоновой учёбы: цели сначала предлагаются, затем утверждаются хозяином. Прогресс основан на твоих оценках.</p>
+      <form id="goal-form" class="compact-form">
+        <select id="goal-skill"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <input id="goal-title" required maxlength="160" placeholder="Цель обучения">
+        <input id="goal-criterion" required maxlength="500" placeholder="Как проверить успех?">
+        <button type="submit">Предложить цель</button>
+      </form>
+      <div id="goals" class="item-list"></div>
+      <form id="feedback-form" class="compact-form">
+        <select id="feedback-skill"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <select id="feedback-rating"><option value="5">5 — отлично</option><option value="4">4 — хорошо</option><option value="3">3 — нормально</option><option value="2">2 — слабо</option><option value="1">1 — плохо</option></select>
+        <input id="feedback-note" required maxlength="1500" placeholder="Что удалось или что улучшить?">
+        <button type="submit">Оценить навык</button>
+      </form>
+      <div id="metrics" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Личность · изменения только с одобрения</summary>
+      <p>Имя, легенда, девять хвостов и клятва защищены. Можно предложить изменение только стиля общения, с последующим откатом.</p>
+      <form id="proposal-form" class="compact-form">
+        <select id="proposal-field"><option value="reply_length">Длина ответа</option><option value="humor_level">Юмор</option><option value="formality">Формальность</option><option value="affection_level">Нежность</option></select>
+        <select id="proposal-value"><option value="medium">Средне</option><option value="low">Меньше</option><option value="high">Больше</option></select>
+        <input id="proposal-reason" maxlength="500" required placeholder="Зачем меняем?">
+        <button type="submit">Предложить изменение</button>
+      </form>
+      <div id="proposals" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Хронология · события нашей истории</summary>
+      <form id="event-form" class="compact-form">
+        <input id="event-text" maxlength="1500" required placeholder="Опиши памятное событие">
+        <label class="consent"><input id="event-fiction" type="checkbox" checked> Художественное событие</label>
+        <label class="consent"><input id="event-confirm" type="checkbox" required> Разрешаю записать</label>
+        <button type="submit">Записать событие</button>
+      </form>
+      <div id="timeline" class="item-list"></div>
+    </details>
+  </section>
+  <footer>霜琉華 · Локальная память SQLite · Cloud.ru по запросу · Без фоновых агентов</footer>
+</main>
+</body></html>
