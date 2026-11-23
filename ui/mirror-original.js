@@ -909,6 +909,7 @@ function pulseNode(nodeId, colorHex, durationMs) {
         edgeColors[j+2] = edgeColors[j+5] = base[2];
       }
       edgeColorAttr.needsUpdate = true;
+      if(selectedNodeId||hoveredNodeId)highlightConnections(hoveredNodeId||selectedNodeId);
     }, 'edge-pulse-' + nodeId);
   }
 }
@@ -1360,5 +1361,8 @@ window.addEventListener('resize', () => {
 fetch('/api/mirror/graph',{cache:'no-store'})
   .then(r => r.json())
   .then(data => { buildGraph(adaptGraph(data)); connectWebSocket(); })
-  .catch(e => console.error('Failed to load graph data:', e));
+  .catch(e=>{
+    console.error('Soryuka SQLite graph failed:',e);
+    window.__soryukaGraphicsError?.('Не удалось загрузить карту памяти SQLite. Проверь локальный Python API и повтори запуск.');
+  });
 
