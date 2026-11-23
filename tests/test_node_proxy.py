@@ -100,7 +100,9 @@ class NodeProxyTests(unittest.TestCase):
 
     def test_mirror_static_assets_and_legacy_console(self):
         for route,marker in [("/",b"canvas-container"),("/console.html",b"chat-form"),
+                             ("/mirror-boot.js",b"WebGL"),
                              ("/mirror-original.js",b"THREE.FogExp2"),
+                             ("/graph-logic.js",b"graphRoute"),
                              ("/graphics-settings.js",b"GRAPHICS_STORAGE_KEY"),
                              ("/vendor/three.module.js",b"WebGLRenderer"),
                              ("/vendor/three-addons/controls/OrbitControls.js",b"OrbitControls"),
@@ -172,6 +174,15 @@ class NodeProxyTests(unittest.TestCase):
         self.assertEqual(status,200)
         self.assertEqual(json.loads(payload)["settings"],custom)
         self.assertNotIn(b"test-proxy-token",payload)
+
+    def test_retired_canvas_routes_are_removed(self):
+        for route in ("/mirror.js","/mirror.css"):
+            code,body,_=self.request(route)
+            self.assertEqual(code,404)
+        code,body,_=self.request("/")
+        self.assertEqual(code,200)
+        self.assertIn(b"/mirror-boot.js",body)
+        self.assertIn(b"id=\"soryuka-engine-error\"",body)
 
     def test_chat_proxy_keeps_server_token_off_browser(self):
         code,body,_=self.request("/api/session",{})
