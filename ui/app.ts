@@ -50,13 +50,14 @@ function renderItems(id,items,render){
   items.forEach(row=>root.append(render(row)));
 }
 async function loadSessions(){
-  if(!state.session){const x=await api('/session',{});state.session=x.session_id;localStorage.setItem('soryuka.session',state.session);}
+  if(!state.session){const x=await api('/session',{});state.session=x.session_id;state.episodePreview=false;localStorage.setItem('soryuka.session',state.session);}
   try{
     const result=await api('/history?session_id='+encodeURIComponent(state.session));
     if(result.items.length){$messages.replaceChildren();result.items.forEach(x=>message(x.role,x.body));}
     else showEmpty();
   }catch{
     state.session=(await api('/session',{})).session_id;
+    state.episodePreview=false;
     localStorage.setItem('soryuka.session',state.session);
     showEmpty();
   }
@@ -371,10 +372,16 @@ function setupV5(){
   });
   bindForm('v5-evidence-form',async()=>{
     const q=byId('v5-question').value;
-    const d=await api('/v5/reason?q='+encodeURIComponent(q));
+    const [d,evidence]=await Promise.all([
+      api('/v5/reason?q='+encodeURIComponent(q)),
+      api('/v5/evidence?q='+encodeURIComponent(q))
+    ]);
+    const root=byId('v5-evidence');
     renderItems('v5-evidence',d.questions,x=>textItem(x.question,
       x.confidence_label+' · подтверждённых записей: '+x.evidence_count+
       ' · источники: '+x.source_ids.join(', ')));
+    evidence.sources.forEach(x=>root.append(textItem(x.body,
+      'Источник '+x.id+' · '+x.provenance+' · переходов по связям: '+x.hop)));
   });
   bindForm('v5-causal-form',async()=>{
     await api('/v5/causal',{cause_id:byId('v5-cause').value,
@@ -383,9 +390,9 @@ function setupV5(){
     await v5Causal();
   });
   byId('v5-index-embeddings').addEventListener('click',async()=>{
-    if(!confirm('Выполнить до 5 Cloud.ru embeddings-запросов? Это может стоить денег. Продолжить?'))return;
+    if(!confirm('Выполнить до 2 Cloud.ru embeddings-запросов? Это может стоить денег. Продолжить?'))return;
     try{
-      const d=await api('/v5/embeddings/index',{confirmed:true,limit:5});
+      const d=await api('/v5/embeddings/index',{confirmed:true,limit:2});
       notify('Индексировано: '+d.indexed+' · из кэша: '+d.cache_hits);
     }catch(e){notify(e.message,true);}
   });
@@ -433,7 +440,7 @@ function setupForms(){
   byId('chat-form').addEventListener('submit',sendMessage);
   $input.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();byId('chat-form').requestSubmit();}});
   byId('new-chat').addEventListener('click',async()=>{
-    try{state.session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
+    try{state.session=(await api('/session',{})).session_id;state.episodePreview=false;localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
   });
   byId('delete-chat').addEventListener('click',async()=>{
     if(!state.session||!confirm('Удалить весь текущий разговор без восстановления?'))return;
