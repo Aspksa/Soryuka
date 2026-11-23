@@ -232,6 +232,8 @@ class AppHandler(BaseHTTPRequestHandler):
                                             body.get("confirmed",False))
         if path=="/api/v5/episode/save":
             return cognition.save_episode(body.get("session_id",""),body.get("confirmed",False))
+        if path=="/api/v5/episode/delete":
+            return {"deleted":cognition.delete_episode(body.get("id",""),body.get("confirmed",False))}
         if path=="/api/v5/causal":
             return cognition.causal_link(body.get("cause_id",""),body.get("effect_id",""),
                                           body.get("evidence",""),body.get("confirmed",False))
