@@ -1,4 +1,4 @@
-"""Real, read-only Soryuka memory graph for the minimal Agent Mirror-style homepage.
+"""Real, read-only Soryuka memory graph for the Soryuka homepage.
 
 Single SQLite source: no invented nodes, no extra server or network calls.
 Only user-confirmed personal memory is included. Disputed notes are visibly tagged.
