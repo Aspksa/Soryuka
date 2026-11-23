@@ -105,6 +105,10 @@ let edgeMesh, edgeGeo;
 let edgePositions, edgeColors, edgeBaseColors, edgeColorAttr;
 
 const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+const sphereGeoLow = new THREE.SphereGeometry(1, 8, 6);
+let graphSignature='';
+let selectedNodeId=null;
+let newNodeCount=0;
 
 // ═══════════════════════════════════════
 // Scene Setup
@@ -420,6 +424,10 @@ function findNodeById(targetPath) {
 
 function clearGraph() {
   if (simulation) simulation.stop();
+  // Complete temporary lights and trails before removing their meshes.
+  for(const animation of activeAnimations.splice(0)){
+    if(animation.onComplete)animation.onComplete();
+  }
   if (edgeMesh) { scene.remove(edgeMesh); edgeGeo.dispose(); edgeMesh.material.dispose(); }
   for (const info of Object.values(nodeMeshes)) {
     scene.remove(info.mesh);
@@ -429,14 +437,30 @@ function clearGraph() {
   }
   nodeMeshes = {}; nodeMap = {}; meshToNodeId.clear();
   raycastTargets.length = 0; nodeEdgeLookup = {};
-  activeAnimations.length = 0;
   nodesData = null; edgesData = null;
   edgeMesh = null; edgeGeo = null;
 }
 
 function buildGraph(data) {
+  const signature=graphFingerprint(data);
+  const {nodes,edges,colors}=data;
+  if(signature===graphSignature && nodesData){
+    // Metadata can change without topology changing. Keep mesh, particle effects,
+    // camera, force layout, selected card and active animations intact.
+    const fresh=new Map(nodes.map(n=>[n.id,n]));
+    for(const node of nodesData){
+      const next=fresh.get(node.id);
+      if(next){node.label=next.label;node.status=next.status;
+        node.description=next.description;node.created_at=next.created_at;}
+    }
+    if(selectedNodeId)openNodeCard(selectedNodeId);
+    return;
+  }
+  const oldNodes=nodesData;
+  const born=seedStablePositions(oldNodes,nodes,edges);
   clearGraph();
-  const { nodes, edges, colors } = data;
+  graphSignature=signature;
+  newNodeCount+=born.length;
   nodesData = nodes; edgesData = edges; colorsData = colors;
 
   nodeMap = {};
@@ -453,9 +477,10 @@ function buildGraph(data) {
       .distance(d => d.type === 'structural' ? 80 : d.type === 'contains' ? 50 : 120)
       .strength(d => d.type === 'structural' ? 0.8 : d.type === 'contains' ? 0.3 : 0.15))
     .force('charge', d3.forceManyBody().strength(d =>
-      d.type === 'category' ? -400 : d.type === 'core' ? -300 : -80))
+      d.type === 'category' ? -480 : d.type === 'core' ? -380 : -110))
     .force('center', d3.forceCenter(0, 0, 0))
-    .force('collision', d3.forceCollide().radius(d => d.size * NODE_SCALE + 2))
+    .force('collision', d3.forceCollide().radius(d=>collisionRadius(d,NODE_SCALE))
+      .strength(0.95).iterations(2))
     .force('x', d3.forceX(0).strength(0.03))
     .force('y', d3.forceY(0).strength(0.03))
     .force('z', d3.forceZ(0).strength(0.03));
@@ -515,7 +540,8 @@ function buildGraph(data) {
       metalness: 0.2, roughness: 0.7,
     });
 
-    const mesh = new THREE.Mesh(sphereGeo, mat);
+    const mesh = new THREE.Mesh(node.type==='file'&&qualityLevel!=='high'?
+      sphereGeoLow:sphereGeo, mat);
     const r = node.size * NODE_SCALE;
     mesh.scale.setScalar(r);
     mesh.userData.baseEmissiveInt = emissiveInt;
@@ -549,6 +575,26 @@ function buildGraph(data) {
 
   // --- Legend ---
   buildLegend(colors, nodes);
+  if(selectedNodeId){
+    if(nodeMap[selectedNodeId])openNodeCard(selectedNodeId);
+    else closeNodeCard();
+  }
+  if(born.length){
+    // Only real new SQLite records generate a "birth" visual, never placeholder nodes.
+    const limited=born.slice(0,6);
+    addAnimation(500,()=>{},()=>{
+      for(const id of limited){
+        const node=nodeMap[id];
+        if(!node)continue;
+        pulseNode(id,'#c8a36d',1400);
+        const edge=edgesData.find(e=>e.source.id===id||e.target.id===id);
+        if(edge){
+          const parent=edge.source.id===id?edge.target:edge.source;
+          if(parent && nodeMap[parent.id])animateParticleTrail(parent,node,'#c8a36d',()=>{});
+        }
+      }
+    });
+  }
 }
 
 function buildLegend(colors, nodes) {
