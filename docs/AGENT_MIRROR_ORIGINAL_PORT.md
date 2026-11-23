@@ -96,8 +96,8 @@ memory, old panels and cached embeddings operate locally.
 
 - `/`: **трёхмерная карта памяти Сорюки** с её SQLite и графическими настройками.
 - `/console.html`: unchanged older chat/Academy/settings/personality UX.
-- `ui/mirror.js`: historical 2D imitation (not loaded on the new homepage).
-- `ui/mirror-original.js`: imported original Three.js scene with local adaptations.
+- The retired `ui/mirror.js` 2D imitation was removed after confirming no runtime imports; its old revisions remain in Git history.
+- `ui/mirror-original.js`: current Three.js WebGL scene with Soryuka data, adaptive FPS and recorded SQLite routes.
 
 ## Privacy and truthful visualization
 
