@@ -103,6 +103,10 @@ async function loadGoals(){
 async function loadMetrics(){
   const d=await api('/metrics');
   renderItems('metrics',d.skills,row=>textItem(row.skill,'Оценок: '+row.rating_count+' · Средняя оценка владельца: '+row.mean_owner_rating+'/5'));
+  renderItems('feedback-records',d.feedback,row=>textItem(row.note,row.skill+' · '+row.rating+'/5',[{label:'Удалить оценку',run:async()=>{
+    if(!confirm('Удалить эту оценку?'))return;
+    await api('/feedback/delete',{id:row.id});await loadMetrics();
+  }}]));
 }
 async function loadProposals(){
   const d=await api('/proposals');
@@ -120,7 +124,10 @@ async function loadProposals(){
 }
 async function loadTimeline(){
   const d=await api('/timeline');
-  renderItems('timeline',d.items,row=>textItem(row.body,row.fiction?'Сюжетный эпизод':'Реальное событие'));
+  renderItems('timeline',d.items,row=>textItem(row.body,row.fiction?'Сюжетный эпизод':'Реальное событие',[{label:'Удалить',run:async()=>{
+    if(!confirm('Удалить событие из хронологии?'))return;
+    await api('/timeline/delete',{id:row.id});await loadTimeline();
+  }}]));
 }
 function bindForm(id,handle){
   byId(id).addEventListener('submit',async event=>{
@@ -136,6 +143,18 @@ function setupForms(){
   $input.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();byId('chat-form').requestSubmit();}});
   byId('new-chat').addEventListener('click',async()=>{
     try{state.session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
+  });
+  byId('delete-chat').addEventListener('click',async()=>{
+    if(!state.session||!confirm('Удалить весь текущий разговор без восстановления?'))return;
+    try{await api('/session/delete',{id:state.session});
+        state.session=(await api('/session',{})).session_id;
+        localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Разговор удалён');}
+    catch(e){notify(e.message,true);}
+  });
+  byId('backup').addEventListener('click',async()=>{
+    if(!confirm('Создать резервную копию базы SQLite на локальном диске?'))return;
+    try{const result=await api('/backup',{confirmed:true});notify('Копия создана: '+result.filename);}
+    catch(e){notify(e.message,true);}
   });
   bindForm('memory-form',async()=>{
     await api('/memory',{kind:byId('memory-kind').value,text:byId('memory-text').value,confirmed:byId('memory-confirm').checked});
