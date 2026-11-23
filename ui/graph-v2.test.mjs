@@ -19,6 +19,10 @@ test('topology signature ignores label changes but detects actual new node',()=>
  assert.equal(graphFingerprint(graph),first);
  graph.nodes.push({id:'mem:actual',label:'Реальная запись'});
  assert.notEqual(graphFingerprint(graph),first);
+ graph.edges.push({source:'core:soryuka',target:'mem:actual',type:'references',relation:'related'});
+ const linked=graphFingerprint(graph);
+ graph.edges[0].relation='contradicts';
+ assert.notEqual(graphFingerprint(graph),linked);
 });
 test('stable graph nodes retain 3D placement and velocity on updates',()=>{
  const next=old.map(n=>({id:n.id,type:n.type,size:n.size,label:n.id}));
