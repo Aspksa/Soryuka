@@ -231,6 +231,15 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
                 context_kind=obj.get("context_kind")
             except (ValueError,TypeError):
                 pass
+        elif r["action"] in ("memory_link_confirmed","memory_link_removed"):
+            targets=["mem:"+subject]
+            try:
+                obj=json.loads(r["after_json"] or "{}")
+                other_id=obj.get("other_id")
+                if isinstance(other_id,str):
+                    targets.append("mem:"+other_id)
+            except (ValueError,TypeError):
+                pass
         elif r["action"].startswith("memory_"):
             targets=["mem:"+subject]
         elif r["action"].startswith("goal_"):
