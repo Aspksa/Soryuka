@@ -107,6 +107,14 @@ try{
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__soryukaDiagnostics?.().totalNodes>=7,
     null,{timeout:30000});
+  const restored=await page.evaluate(async()=>({
+    diagnostics:window.__soryukaDiagnostics?.(),
+    api:await fetch('/api/mirror/settings').then(r=>r.json()),
+    storage:localStorage.getItem('soryuka.mirror.graphics.v1'),
+    status:document.getElementById('graphics-save-status')?.textContent,
+    errors:document.getElementById('soryuka-engine-message')?.textContent
+  }));
+  console.log('WebGL restored graphics after reload:',JSON.stringify(restored));
   await page.waitForFunction(()=>Math.abs(window.__soryukaDiagnostics?.().fogDensity-0.0012)<1e-8,
     null,{timeout:10000});
   await page.locator('#graphics-toggle').click();
