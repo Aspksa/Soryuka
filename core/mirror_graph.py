@@ -261,7 +261,10 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
                       "category":"dialog",
                       "targets":["turn:"+str(r["id"]),"session:"+r["session_id"]],
                       "at":r["created_at"],"source":"sqlite_message"})
-    items.sort(key=lambda e:(e["at"], e["id"]))
+    # Audit IDs must be ordered NUMERICALLY: lexicographic a:10 < a:9 would
+    # invert real request_started / response_saved phases in the browser.
+    items.sort(key=lambda e:(e["at"], 0 if e["id"].startswith("a:") else 1,
+                             int(e["id"].split(":",1)[1])))
     return {"items":items[-160:],"cursor":{
                 "audit":audits[-1]["id"] if audits else a,
                 "message":messages[-1]["id"] if messages else m},
