@@ -7,6 +7,9 @@
 - [Легенда, титул, характер и официальная карточка](docs/SORYUKA.md)
 - [Машиночитаемый профиль для будущего интерфейса](character/soryuka.json)
 - [Полный канон личности: характер, любовь, ценности, эмоции и речь](docs/PERSONALITY.md)
+- [Living Personality 2.0 — все 60 выбранных улучшений](docs/LIVING_PERSONALITY_2.md)
+- [Living Personality 2.0 — структурированные правила](character/living_personality_v2.json)
+- [Python-модуль подбора поведения для будущего API](character/living_personality_runtime.py)
 - [Структурированный профиль личности для программного чтения](character/personality.json)
 - [Поведенческая инструкция для будущего ИИ-чата](character/SORYUKA_INSTRUCTIONS.md)
 
