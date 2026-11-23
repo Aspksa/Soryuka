@@ -1,7 +1,7 @@
-// Soryuka 3.0 — TypeScript-compatible browser source, checked-in JS build (no dependencies).
+// Soryuka 4.0 — TypeScript-compatible browser source, checked-in JS build (no dependencies).
 // App and API data remain on loopback. Never put the Cloud.ru key in client code.
 const byId = id => document.getElementById(id);
-const state = {session:localStorage.getItem('soryuka.session')||'',emotion:'serene',gesture:'still',busy:false};
+const state = {session:localStorage.getItem('soryuka.session')||'',emotion:'serene',gesture:'still',busy:false,memoryNames:new Map()};
 const $messages=byId('messages');
 const $input=byId('message');
 
@@ -79,6 +79,7 @@ async function sendMessage(event){
 }
 async function loadMemories(){
   const d=await api('/memories');
+  populateV4Memories(d.items);
   renderItems('memories',d.items,row=>textItem(row.body,row.kind,[{label:'Удалить',run:async()=>{
     if(!confirm('Удалить это воспоминание?'))return;
     await api('/memory/delete',{id:row.id});await loadMemories();
@@ -86,6 +87,7 @@ async function loadMemories(){
 }
 async function loadGoals(){
   const d=await api('/goals');
+  populateV4Goals(d.items);
   renderItems('goals',d.items,row=>{
     const actions=[];
     if(row.status==='proposed'){
@@ -142,6 +144,142 @@ async function loadTimeline(){
     await api('/timeline/delete',{id:row.id});await loadTimeline();
   }}]));
 }
+
+function fillSelect(id,rows,renderLabel){
+  const select=byId(id),prior=select.value;
+  select.replaceChildren();
+  for(const r of rows){
+    const option=document.createElement('option');
+    option.value=r.id; option.textContent=renderLabel(r);
+    select.append(option);
+  }
+  if(rows.some(x=>x.id===prior))select.value=prior;
+}
+function populateV4Memories(rows){
+  state.memoryNames=new Map(rows.map(x=>[x.id,x.body]));
+  for(const id of ['v4-link-a','v4-link-b','v4-review-id','v4-evidence-id']){
+    fillSelect(id,rows,x=>x.body.slice(0,90)+' · '+x.kind);
+  }
+}
+function populateV4Goals(rows){
+  fillSelect('v4-assessment-goal',rows.filter(x=>x.status==='approved'),
+    x=>x.skill+' · '+x.title.slice(0,80));
+}
+async function v4Search(){
+  const q=byId('v4-search').value.trim();
+  if(!q)return;
+  const r=await api('/memory/search?q='+encodeURIComponent(q));
+  renderItems('v4-search-results',r.items,x=>textItem(x.body,
+    x.kind+' · локальное сходство: '+Math.round(x.score*100)+'% · '+x.provenance));
+}
+async function v4Links(){
+  const r=await api('/memory/graph');
+  renderItems('v4-links',r.items,x=>textItem(
+    (state.memoryNames.get(x.source_id)||x.source_id)+' ↔ '+(state.memoryNames.get(x.target_id)||x.target_id),
+    x.relation,[{label:'Убрать связь',run:async()=>{
+      if(!confirm('Удалить подтверждённую связь?'))return;
+      await api('/memory/unlink',x);await v4Links();
+    }}]));
+}
+async function v4Review(){
+  const id=byId('v4-review-id').value;
+  if(!id)return notify('Сначала добавь воспоминания',true);
+  const r=await api('/memory/review?id='+encodeURIComponent(id));
+  renderItems('v4-review-results',r.items,x=>{
+    const actions=x.kind==='possible_duplicate'?[{label:'Объединить после проверки',run:async()=>{
+      if(!confirm('Оставить выбранную запись и удалить похожую? Это действие нельзя отменить.'))return;
+      await api('/memory/merge',{keep_id:id,remove_id:x.memory_id,confirmed:true});
+      await loadMemories();await v4Links();await v4Review();
+    }}]:[];
+    return textItem(x.body,x.kind==='possible_conflict'
+      ?'Возможно противоречие — проверь оба утверждения вручную'
+      :'Возможно совпадение · сходство '+Math.round(x.similarity*100)+'%',actions);
+  });
+}
+async function v4Chronology(){
+  const d=await api('/memory/chronology');
+  renderItems('v4-chronology',d.items,x=>textItem(x.body,
+    (x.fiction?'Художественное событие · ':'')+x.category+' · '+x.created_at+' · '+x.source));
+}
+async function v4Map(){
+  const d=await api('/academy/map');
+  renderItems('v4-skill-map',d.items,x=>{
+    const counts=x.goals||{},checks=x.reference_checks||{};
+    const rating=x.owner_ratings?x.owner_ratings.mean_owner_rating+'/5 из '+x.owner_ratings.rating_count+' оценок':'нет оценок';
+    return textItem(x.skill,'Предложено: '+(counts.proposed||0)+' · Одобрено: '+(counts.approved||0)+
+      ' · Выполнено: '+(counts.completed||0)+' · Эталонные совпадения: '+(checks.passed||0)+'/'+(checks.tests||0)+
+      ' · Оценки хозяина: '+rating);
+  });
+}
+async function v4Assessments(){
+  const d=await api('/academy/assessments');
+  renderItems('v4-assessments',d.items,x=>textItem(x.question,
+    (x.passed?'Совпало с эталоном':'Не совпало с эталоном')+' · '+x.skill+
+    (x.review?' · Разбор: '+x.review:'')));
+}
+async function v4Strategies(){
+  const d=await api('/academy/strategies');
+  renderItems('v4-strategies',d.items,x=>{
+    const actions=[];
+    if(x.status==='proposed'){
+      actions.push({label:'Одобрить как идею',run:async()=>{await api('/academy/strategy/action',{id:x.id,action:'approve'});await v4Strategies();}});
+      actions.push({label:'Отклонить',run:async()=>{await api('/academy/strategy/action',{id:x.id,action:'reject'});await v4Strategies();}});
+    }
+    if(x.status==='approved')actions.push({label:'Отозвать одобрение',run:async()=>{
+      await api('/academy/strategy/action',{id:x.id,action:'rollback'});await v4Strategies();
+    }});
+    return textItem(x.name,x.skill+' · '+x.status+' · Было '+x.baseline+'% → '+x.trial+
+      '% (предоставлено хозяином, не проверено автоматически) · '+x.evidence,actions);
+  });
+}
+async function v4Council(){
+  const d=await api('/academy/council');
+  renderItems('v4-council',d.items,x=>textItem(x.title,x.skill+' · '+x.reason+' · '+x.criterion,[{
+    label:'Предложить цель',run:async()=>{
+      await api('/goal',{skill:x.skill,title:x.title,criterion:x.criterion});
+      await loadGoals();await v4Council();
+    }
+  }]));
+}
+async function v4Diary(){
+  const d=await api('/academy/diary');
+  renderItems('v4-diary',d.items,x=>textItem(x.action,x.created_at));
+}
+function setupV4(){
+  bindForm('v4-search-form',v4Search);
+  bindForm('v4-link-form',async()=>{
+    await api('/memory/link',{source_id:byId('v4-link-a').value,target_id:byId('v4-link-b').value,
+      relation:byId('v4-link-type').value,confirmed:byId('v4-link-confirm').checked});
+    await v4Links();
+  });
+  byId('v4-review').addEventListener('click',()=>v4Review().catch(e=>notify(e.message,true)));
+  bindForm('v4-provenance-form',async()=>{
+    await api('/memory/provenance',{id:byId('v4-evidence-id').value,
+      status:byId('v4-evidence-status').value,source_note:byId('v4-evidence-note').value,
+      confirmed:byId('v4-evidence-confirm').checked});
+    await loadMemories();
+  });
+  byId('v4-chronology-refresh').addEventListener('click',()=>v4Chronology().catch(e=>notify(e.message,true)));
+  byId('v4-map-refresh').addEventListener('click',()=>v4Map().catch(e=>notify(e.message,true)));
+  bindForm('v4-assessment-form',async()=>{
+    const x=await api('/academy/assessment',{goal_id:byId('v4-assessment-goal').value,
+      question:byId('v4-assessment-question').value,reference:byId('v4-assessment-reference').value,
+      answer:byId('v4-assessment-answer').value,review:byId('v4-assessment-review').value,
+      confirmed:byId('v4-assessment-confirm').checked});
+    notify(x.passed?'Ответ совпал с эталоном':'Ответ не совпал с эталоном');
+    await Promise.all([v4Assessments(),v4Map()]);
+  });
+  bindForm('v4-strategy-form',async()=>{
+    await api('/academy/strategy',{skill:byId('v4-strategy-skill').value,
+      name:byId('v4-strategy-name').value,baseline:Number(byId('v4-baseline').value),
+      trial:Number(byId('v4-trial').value),evidence:byId('v4-strategy-evidence').value,
+      confirmed:byId('v4-strategy-confirm').checked});
+    await v4Strategies();
+  });
+  byId('v4-council-refresh').addEventListener('click',()=>v4Council().catch(e=>notify(e.message,true)));
+  byId('v4-diary-refresh').addEventListener('click',()=>v4Diary().catch(e=>notify(e.message,true)));
+}
+
 function bindForm(id,handle){
   byId(id).addEventListener('submit',async event=>{
     event.preventDefault();const btn=event.currentTarget.querySelector('button[type=submit]');
@@ -234,13 +372,13 @@ function canvasTails(){
   }requestAnimationFrame(draw);
 }
 async function start(){
-  setupForms();canvasTails();
+  setupForms();setupV4();canvasTails();
   try{
     const [health,profile]=await Promise.all([api('/health'),api('/profile')]);
     byId('status-dot').classList.toggle('online',health.configured);
     notify(health.configured?'Cloud.ru подключён':'Cloud.ru не настроен · см. README');
     await loadSessions();
-    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary()]);
+    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary(),v4Map(),v4Links(),v4Assessments(),v4Strategies()]);
   }catch(e){notify(e.message,true);}
 }
 start();
