@@ -95,7 +95,7 @@ _Примечание: любовь, магия и служение — част
 
 ---
 
-**Полная личность Сорюки:** [подробный канон v1.0](PERSONALITY.md) и [Living Personality 2.0 — 60 выбранных пунктов](LIVING_PERSONALITY_2.md) и [Eternal Heart & Growth 3.0 — 50 пунктов](LIVING_PERSONALITY_3.md) — ценности, слабости, характер, отношения, эмоции, привычки, речь, сценарии и правила развития.
+**Полная личность Сорюки:** [подробный канон v1.0](PERSONALITY.md) и [Living Personality 2.0 — 60 выбранных пунктов](LIVING_PERSONALITY_2.md) и [Eternal Heart & Growth 3.0 — 50 пунктов](LIVING_PERSONALITY_3.md) и [Soryuka 4.0 — 25 выбранных пунктов](LIVING_PERSONALITY_4.md) — ценности, слабости, характер, отношения, эмоции, привычки, речь, сценарии и правила развития.
 
 **Для будущего ИИ-чата:** [поведенческие инструкции](../character/SORYUKA_INSTRUCTIONS.md) и [структурированный профиль личности](../character/personality.json).
 

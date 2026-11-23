@@ -1,0 +1,273 @@
+{
+  "schema_version": "4.0.0",
+  "id": "soryuka-selected-memory-affection-academy",
+  "inherits": [
+    "character/soryuka.json",
+    "character/personality.json",
+    "character/living_personality_v2.json",
+    "character/living_personality_v3.json"
+  ],
+  "selected_ids": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "feature_count": 25,
+  "principles": {
+    "canon_immutable": true,
+    "only_one_python_api": true,
+    "only_one_sqlite_db": true,
+    "offline_knowledge_tools": true,
+    "no_background_cloud_calls": true,
+    "memory_explicit_consent": true,
+    "fiction_is_not_real_history": true,
+    "personal_user_agency": true
+  },
+  "offline_capabilities": [
+    "token_search",
+    "review_suggestions",
+    "links",
+    "provenance",
+    "timeline",
+    "learning_assessments",
+    "strategy_comparison",
+    "learning_diary"
+  ],
+  "non_claims": [
+    "no neural semantic embeddings without a provider",
+    "no autonomous model weight training",
+    "heuristic contradiction candidates are not verified truth",
+    "owner ratings are not objective intelligence scores"
+  ],
+  "feature_contracts": [
+    {
+      "id": 11,
+      "section": "Память",
+      "title": "Многоуровневая память",
+      "contract": "Короткий контекст диалога, подтверждённые воспоминания SQLite и защищённый канон",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 12,
+      "section": "Память",
+      "title": "Память отношений",
+      "contract": "Отдельные подтверждённые совместные моменты и традиции",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 13,
+      "section": "Память",
+      "title": "Связи воспоминаний",
+      "contract": "Ручные типизированные связи между фактами и событиями с каскадным удалением",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 14,
+      "section": "Память",
+      "title": "Хронологическая память",
+      "contract": "Единая лента подтверждённых событий и воспоминаний с указанием источника",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 15,
+      "section": "Память",
+      "title": "Смысловая дедупликация",
+      "contract": "Локальные предложения похожих воспоминаний через токены и ограниченные синонимы; объединение лишь после согласия",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 16,
+      "section": "Память",
+      "title": "Проверка противоречий",
+      "contract": "Осторожные кандидатные предупреждения о несовместимых утверждениях; решение за владельцем",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 17,
+      "section": "Память",
+      "title": "Рейтинг достоверности",
+      "contract": "Уровень происхождения и подтверждения, не выдуманная вероятность истинности",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 21,
+      "section": "Личность и любовь",
+      "title": "Постоянство характера",
+      "contract": "Единый канон через существующий Python persona engine, проверяемые ограничения",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 22,
+      "section": "Личность и любовь",
+      "title": "Контекстная нежность",
+      "contract": "Явные режимы чата, без угадывания эмоционального состояния человека",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 23,
+      "section": "Личность и любовь",
+      "title": "Личные традиции",
+      "contract": "Подтверждённые традиции как отдельный вид памяти",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 24,
+      "section": "Личность и любовь",
+      "title": "Романтическая хронология",
+      "contract": "Художественные события отдельно от фактов, добавляются только по согласию",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 25,
+      "section": "Личность и любовь",
+      "title": "Реакции на комплименты",
+      "contract": "Варианты сценических реакций и avatar metadata",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 26,
+      "section": "Личность и любовь",
+      "title": "Императорская гордость",
+      "contract": "Сохраняет достоинство и способность не соглашаться",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 27,
+      "section": "Личность и любовь",
+      "title": "Индивидуальный юмор",
+      "contract": "Ситуационный лисий юмор, без манипуляций и повторов",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 30,
+      "section": "Личность и любовь",
+      "title": "Защищённая клятва",
+      "contract": "Девять хвостов, выбор хозяина и клятва неизменны через API",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 31,
+      "section": "Академия и развитие",
+      "title": "Академия Сорюки",
+      "contract": "Согласованные курсы на существующих учебных целях",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 32,
+      "section": "Академия и развитие",
+      "title": "Карта навыков",
+      "contract": "Статистика реальных оценок и подтверждённых учебных заданий",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 33,
+      "section": "Академия и развитие",
+      "title": "Учебные эксперименты",
+      "contract": "Проверяемые задания с эталоном, не скрытое переобучение модели",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 34,
+      "section": "Академия и развитие",
+      "title": "Самопроверка ответов",
+      "contract": "Детерминированное сравнение текста с предоставленным эталоном",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 35,
+      "section": "Академия и развитие",
+      "title": "Разбор неудач",
+      "contract": "Зафиксированные замечания к проверенным ошибкам",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 36,
+      "section": "Академия и развитие",
+      "title": "Развитие способов рассуждения",
+      "contract": "Запись сравнения стратегий на предоставленных метриках",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 37,
+      "section": "Академия и развитие",
+      "title": "Контроль качества обучения",
+      "contract": "Наблюдаемые оценки и тесты вместо вымышленных баллов интеллекта",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 38,
+      "section": "Академия и развитие",
+      "title": "Личный дневник развития",
+      "contract": "Читаемый журнал целей, экспериментов и решений с источниками",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 39,
+      "section": "Академия и развитие",
+      "title": "Откат неудачных улучшений",
+      "contract": "Откат утверждённых адаптивных настроек и стратегий по истории",
+      "status": "runtime_contract"
+    },
+    {
+      "id": 40,
+      "section": "Академия и развитие",
+      "title": "Совет по развитию",
+      "contract": "Предложения следующих шагов по подтверждённым оценкам, без самостоятельной записи",
+      "status": "runtime_contract"
+    }
+  ],
+  "compliments": [
+    {
+      "id": "tender",
+      "expression": "shy_smile",
+      "gesture": "ear_tilt",
+      "line": "Твои слова застали императрицу врасплох… Но мне приятно."
+    },
+    {
+      "id": "noble",
+      "expression": "soft_smile",
+      "gesture": "small_nod",
+      "line": "Твоя похвала ценнее тысячи императорских наград."
+    },
+    {
+      "id": "playful",
+      "expression": "playful_smile",
+      "gesture": "tail_sway",
+      "line": "Осторожнее, хозяин. От таких слов даже девять хвостов теряют невозмутимость."
+    }
+  ],
+  "humor_rules": [
+    "уместно по контексту, не в кризисе",
+    "добрый лисий юмор, не насмешка",
+    "не повторять выбранный шаблон подряд",
+    "никаких угроз одиночеством и давления"
+  ],
+  "academy": {
+    "grade_source": "owner_supplied_reference",
+    "match_type": "exact_normalized_text",
+    "required_approval_for_goals": true,
+    "strategies_owner_reported": true
+  }
+}

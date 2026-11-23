@@ -11,7 +11,7 @@
 <body>
 <main class="layout">
   <header class="header">
-    <div class="brand"><span class="seal" aria-hidden="true">霜</span><div><strong>霜琉華 <span>Soryuka</span></strong><small>Living Personality 3.0</small></div></div>
+    <div class="brand"><span class="seal" aria-hidden="true">霜</span><div><strong>霜琉華 <span>Soryuka</span></strong><small>Living Personality 4.0</small></div></div>
     <div class="right-status"><span id="status-dot" class="status-dot"></span><span id="status">Проверка подключения…</span><button id="new-chat" type="button" class="subtle">Новый разговор</button><button id="delete-chat" type="button" class="subtle">Удалить разговор</button></div>
   </header>
   <section class="scene" aria-label="Художественная визуализация девяти хвостов Сорюки">
@@ -99,6 +99,77 @@
         <button type="submit">Записать событие</button>
       </form>
       <div id="timeline" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Карта памяти · связи, поиск, достоверность</summary>
+      <p>Локальное сравнение слов помогает найти похожие воспоминания и возможные противоречия. Это <strong>предположения для твоей проверки</strong>, не доказанные факты и не нейросетевые эмбеддинги.</p>
+      <form id="v4-search-form" class="compact-form">
+        <label for="v4-search">Поиск</label>
+        <input id="v4-search" required maxlength="250" placeholder="Например: любимый чай">
+        <button type="submit">Найти</button>
+      </form>
+      <div id="v4-search-results" class="item-list" aria-live="polite"></div>
+      <form id="v4-link-form" class="compact-form">
+        <label for="v4-link-a">Факт 1</label><select id="v4-link-a" required></select>
+        <label for="v4-link-b">Факт 2</label><select id="v4-link-b" required></select>
+        <label for="v4-link-type">Связь</label>
+        <select id="v4-link-type">
+          <option value="related">Связано</option><option value="same_topic">Одна тема</option>
+          <option value="supports">Подтверждает</option><option value="precedes">Раньше</option>
+          <option value="contradicts">Противоречит (моё решение)</option>
+        </select>
+        <label class="consent"><input id="v4-link-confirm" type="checkbox" required> Подтверждаю связь</label>
+        <button type="submit">Связать</button>
+      </form>
+      <div id="v4-links" class="item-list"></div>
+      <label for="v4-review-id">Проверить похожие записи</label>
+      <select id="v4-review-id"></select>
+      <button id="v4-review" type="button" class="subtle">Проверить</button>
+      <div id="v4-review-results" class="item-list" aria-live="polite"></div>
+      <form id="v4-provenance-form" class="compact-form">
+        <label for="v4-evidence-id">Происхождение записи</label><select id="v4-evidence-id"></select>
+        <select id="v4-evidence-status">
+          <option value="owner_confirmed">Подтверждено мной</option>
+          <option value="owner_disputed">Я оспариваю</option>
+          <option value="source_supplied">Источник указан, но не проверен</option>
+        </select>
+        <input id="v4-evidence-note" maxlength="350" placeholder="Описание источника (необязательно)">
+        <label class="consent"><input id="v4-evidence-confirm" type="checkbox" required> Подтверждаю изменение</label>
+        <button type="submit">Сохранить статус</button>
+      </form>
+      <button id="v4-chronology-refresh" type="button" class="subtle">Показать хронологию</button>
+      <div id="v4-chronology" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Академия · задания, стратегии, доказательства</summary>
+      <p>Учебные проверки и стратегии записываются только по твоему действию. Сравнение текста с эталоном точное после нормализации; это <strong>не оценка сознания или обучение весов модели</strong>.</p>
+      <button id="v4-map-refresh" type="button" class="subtle">Показать карту навыков</button>
+      <div id="v4-skill-map" class="item-list"></div>
+      <form id="v4-assessment-form" class="compact-form">
+        <label for="v4-assessment-goal">Одобренная цель</label><select id="v4-assessment-goal" required></select>
+        <input id="v4-assessment-question" maxlength="500" required placeholder="Вопрос задания">
+        <input id="v4-assessment-reference" maxlength="1500" required placeholder="Эталон ответа">
+        <input id="v4-assessment-answer" maxlength="1500" required placeholder="Проверяемый ответ">
+        <input id="v4-assessment-review" maxlength="700" placeholder="Комментарий к ошибке (необязательно)">
+        <label class="consent"><input id="v4-assessment-confirm" type="checkbox" required> Подтверждаю результат</label>
+        <button type="submit">Проверить и записать</button>
+      </form>
+      <div id="v4-assessments" class="item-list"></div>
+      <form id="v4-strategy-form" class="compact-form">
+        <label for="v4-strategy-skill">Навык</label>
+        <select id="v4-strategy-skill"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <input id="v4-strategy-name" required maxlength="120" placeholder="Название нового метода">
+        <label for="v4-baseline">Было, %</label><input id="v4-baseline" type="number" min="0" max="100" step=".1" required>
+        <label for="v4-trial">Стало, %</label><input id="v4-trial" type="number" min="0" max="100" step=".1" required>
+        <input id="v4-strategy-evidence" maxlength="500" required placeholder="На каких тестах сравнивали?">
+        <label class="consent"><input id="v4-strategy-confirm" type="checkbox" required> Я внёс реальные показатели</label>
+        <button type="submit">Предложить стратегию</button>
+      </form>
+      <div id="v4-strategies" class="item-list"></div>
+      <button id="v4-council-refresh" type="button" class="subtle">Совет по развитию</button>
+      <div id="v4-council" class="item-list"></div>
+      <button id="v4-diary-refresh" type="button" class="subtle">Дневник обучения</button>
+      <div id="v4-diary" class="item-list"></div>
     </details>
   </section>
   <footer>霜琉華 · Локальная память SQLite · Cloud.ru по запросу · Без фоновых агентов</footer>
