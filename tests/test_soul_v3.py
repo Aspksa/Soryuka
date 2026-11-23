@@ -129,6 +129,45 @@ class StoreTests(unittest.TestCase):
         self.assertIn("change_rolled_back",actions)
 
 
+    def test_deleted_memory_is_not_retained_in_audit(self):
+        private_text="VERY_PRIVATE_MEMORABLE_SENTENCE_123"
+        m=self.store.add_memory("fact",private_text,True)
+        self.store.delete_memory(m["id"])
+        raw=json.dumps(self.store.audit_log(),ensure_ascii=False)
+        self.assertNotIn(private_text,raw)
+
+    def test_delete_session_removes_all_messages(self):
+        sid=self.store.ensure_session()
+        self.store.save_exchange(sid,"Личный разговор","Конфиденциальный ответ","greeting")
+        self.assertTrue(self.store.delete_session(sid))
+        self.assertEqual(self.store.sessions(),[])
+        self.assertEqual(self.store.history(sid),[])
+
+    def test_delete_event_removes_story_from_timeline_and_audit(self):
+        body="Личная история в китайском саду"
+        event=self.store.add_event(body,True,True)
+        self.assertTrue(self.store.delete_event(event["id"]))
+        self.assertEqual(self.store.timeline(),[])
+        self.assertNotIn(body,json.dumps(self.store.audit_log(),ensure_ascii=False))
+
+    def test_delete_feedback_recalculates_metrics(self):
+        a=self.store.add_feedback("общение",5,"Было хорошо")
+        self.store.add_feedback("общение",1,"Было плохо")
+        self.assertTrue(self.store.delete_feedback(a["id"]))
+        self.assertEqual(self.store.skill_metrics()[0]["mean_owner_rating"],1.0)
+
+    def test_explicit_consistent_sqlite_backup(self):
+        sid=self.store.ensure_session()
+        self.store.save_exchange(sid,"память","ответ","greeting")
+        with self.assertRaises(StoreError):
+            self.store.create_backup(False)
+        record=self.store.create_backup(True)
+        target=Path(record["path"])
+        self.assertTrue(target.exists())
+        recovered=SoulStore(target)
+        self.assertEqual(len(recovered.history(sid)),2)
+
+
 class EngineTests(unittest.TestCase):
     def setUp(self):
         self.dir=tempfile.TemporaryDirectory()
