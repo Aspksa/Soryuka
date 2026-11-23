@@ -579,6 +579,7 @@ function buildGraph(data) {
     if(nodeMap[selectedNodeId])openNodeCard(selectedNodeId);
     else closeNodeCard();
   }
+  if(renderReady)applyAdaptiveLOD();
   if(born.length){
     // Only real new SQLite records generate a "birth" visual, never placeholder nodes.
     const limited=born.slice(0,6);
@@ -712,6 +713,7 @@ function closeNodeCard(){
   selectedNodeId=null;
   document.getElementById('node-detail').hidden=true;
   applyFocus(hoveredNodeId);
+  if(renderReady)applyAdaptiveLOD();
 }
 
 function focusCameraOn(node){
@@ -742,6 +744,9 @@ function openNodeCard(id){
   ].filter(Boolean).join(' · ');
   document.getElementById('detail-summary').textContent=
     node.description||'Дополнительное описание в базе данных отсутствует.';
+  document.getElementById('detail-origin').textContent=
+    'Источник: '+(node.id.startsWith('canon:')?'Файлы канона':
+      'Локальная SQLite')+' · '+node.id;
   const list=document.getElementById('detail-related');
   list.replaceChildren();
   const related=relatedNodes(id,edgesData,nodeMap,14);
@@ -766,6 +771,7 @@ function openNodeCard(id){
   }
   panel.hidden=false;
   applyFocus(id);
+  if(renderReady)applyAdaptiveLOD();
 }
 
 document.getElementById('node-detail-close').addEventListener('click',closeNodeCard);
@@ -1357,7 +1363,12 @@ window.addEventListener('resize', () => {
 // ═══════════════════════════════════════
 
 fetch('/api/mirror/graph',{cache:'no-store'})
-  .then(r => r.json())
-  .then(data => { buildGraph(adaptGraph(data)); connectWebSocket(); })
-  .catch(e => console.error('Failed to load graph data:', e));
+  .then(r=>{if(!r.ok)throw Error('Python API '+r.status);return r.json();})
+  .then(data=>buildGraph(adaptGraph(data)))
+  .catch(e=>{
+    console.error('Soryuka graph load failed',e);
+    document.getElementById('render-status').textContent=
+      '3D · данные недоступны · повторное подключение';
+  })
+  .finally(()=>connectWebSocket());
 
