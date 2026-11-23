@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -155,7 +156,7 @@ class LocalCapabilitiesTests(unittest.TestCase):
             self.v4.set_provenance(a["id"],"source_supplied","Книга",False)
         r=self.v4.set_provenance(a["id"],"source_supplied","Книга",True)
         self.assertEqual(r["status"],"source_supplied")
-        self.assertIn("not",r["meaning"])
+        self.assertIn("no source independently verified",r["meaning"])
         self.assertEqual(len(self.store.list_memories()),1)
 
     def test_chronology_separates_fiction(self):
@@ -284,7 +285,7 @@ class API4Tests(unittest.TestCase):
     def test_memory_search_and_graph_api(self):
         _,a=self.request("/api/memory",{"kind":"fact","text":"Мой любимый чай","confirmed":True})
         _,b=self.request("/api/memory",{"kind":"fact","text":"Чай и ритуал","confirmed":True})
-        code,found=self.request("/api/memory/search?q=чай")
+        code,found=self.request("/api/memory/search?q="+quote("чай"))
         self.assertEqual(code,200);self.assertEqual(len(found["items"]),2)
         code,_=self.request("/api/memory/link",{"source_id":a["id"],"target_id":b["id"],
                                                 "relation":"related","confirmed":True})
