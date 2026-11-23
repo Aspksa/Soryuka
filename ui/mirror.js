@@ -409,12 +409,14 @@ async function pollActivity(initial=false){
     const newCursors=result.cursor||state.cursors;
     state.cursors={audit:Math.max(state.cursors.audit,Number(newCursors.audit)||0),
                    message:Math.max(state.cursors.message,Number(newCursors.message)||0)};
-    addEvents(evs,!initial);
     state.firstActivity=false;
+    // Rebuild first so newly created message/goal nodes exist before their real pulse.
+    if(!initial&&evs.length)await refreshGraph();
+    addEvents(evs,!initial);
     state.failed=false;
     $('feed-status-dot').classList.remove('warn');
     $('feed-status-text').textContent='Активность SQLite · синхронизировано '+new Date().toLocaleTimeString('ru-RU');
-    if(!initial&&evs.length)void refreshGraph();
+
   }catch(error){
     $('feed-status-dot').classList.add('warn');
     $('feed-status-text').textContent='Ожидание локального API…';
