@@ -11,8 +11,10 @@ const token=process.env.SORYUKA_API_TOKEN;
 if(!token){ console.error('SORYUKA_API_TOKEN missing: run launch.py'); process.exit(1); }
 const selfOrigin='http://127.0.0.1:'+uiPort;
 const staticFiles=new Map([
-  ['/','index.html'],['/index.html','index.html'],['/style.css','style.css'],
-  ['/app.js','app.js']
+  ['/','index.html'],['/index.html','index.html'],
+  ['/mirror.css','mirror.css'],['/mirror.js','mirror.js'],
+  ['/console','console.html'],['/console.html','console.html'],
+  ['/style.css','style.css'],['/app.js','app.js']
 ]);
 const contentType={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8'};
 
