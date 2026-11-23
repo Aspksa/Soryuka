@@ -184,7 +184,11 @@ class SoryukaEngine:
         memories=trusted if trusted else self.v4.confirmed_memories(6)
         relationship=self.v4.relationship_context(3) if intent in ("affection","greeting","compliment","creative") else {}
         plan=self.v5.reasoning_plan(text)
-        extra={"relationship":relationship,"evidence_plan":{
+        evidence=self.v5.evidence_search(text[:250],limit=6,max_hops=2)
+        extra={"relationship":relationship,
+               "evidence_sources":[{"id":r["id"],"text":r["body"][:320],
+                  "graph_hop":r["hop"],"origin":r["origin"]} for r in evidence["sources"]],
+               "evidence_plan":{
             "subquestions":[{"question":r["question"],"source_ids":r["source_ids"],
                              "confidence_label":r["confidence_label"]} for r in plan["questions"]],
             "source_ids":plan["source_ids"],
