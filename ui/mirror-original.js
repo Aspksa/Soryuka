@@ -777,6 +777,16 @@ function connectWebSocket() {
           if (nid) { pulseNode(nid, ACCESS_COLORS.grep, 3000); updateAccessCount(nid); }
         }
       }
+      else if (['learn','growth','link','delete'].includes(ev.type)) {
+        const color=ev.type==='delete'?'#ef4444':ev.type==='link'?'#22d3ee':
+          ev.type==='growth'?'#22c55e':'#a855f7';
+        const paths=Array.isArray(ev.results)&&ev.results.length?
+          ev.results.map(r=>r.path):[ev.path];
+        for(const p of paths.slice(0,8)){
+          const nid=findNodeById(p);
+          if(nid){pulseNode(nid,color,3200);updateAccessCount(nid);}
+        }
+      }
     }
   };
 }
