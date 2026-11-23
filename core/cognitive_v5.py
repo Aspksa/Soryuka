@@ -230,7 +230,8 @@ class CognitiveV5:
             raise StoreError("Cloud embedding indexing requires explicit owner permission")
         if not self.embed.ready():
             raise StoreError("Cloud embedding configuration missing")
-        limit=max(1,min(int(limit),12))
+        # Cap sequential paid network calls to fit the localhost proxy timeout.
+        limit=max(1,min(int(limit),2))
         trusted=self.cap.confirmed_memories(300)
         indexed=0;cache_hits=0
         for row in trusted[:limit]:
@@ -244,7 +245,7 @@ class CognitiveV5:
                     (row["id"],self.embed.model,_hash(row["body"]),now()))
             indexed+=1
         return {"indexed":indexed,"cache_hits":cache_hits,"model":self.embed.model,
-                "background_calls":False,"may_incure_provider_charges":True}
+                "background_calls":False,"may_incur_provider_charges":True}
 
     def vector_search(self,query:str,confirmed:bool,limit:int=6)->list[dict]:
         if confirmed is not True or not self.permission("cloud_embeddings"):
