@@ -178,8 +178,9 @@ class SoryukaEngine:
         sid=self.store.ensure_session(session_id)
         event=event_data(intent)
         history=self.store.history(sid,12)
-        found=self.v4.memory_index(text,12)
-        trusted=[row for row in found if row.get("provenance")=="owner_confirmed"][:6]
+        # Hybrid retrieval uses ONLY locally cached vectors; never embeds in a chat turn.
+        search=self.v5.hybrid_search(text[:250],limit=8)
+        trusted=search["items"][:6]
         memories=trusted if trusted else self.v4.confirmed_memories(6)
         relationship=self.v4.relationship_context(3) if intent in ("affection","greeting","compliment","creative") else {}
         plan=self.v5.reasoning_plan(text)
