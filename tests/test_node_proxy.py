@@ -101,6 +101,7 @@ class NodeProxyTests(unittest.TestCase):
     def test_mirror_static_assets_and_legacy_console(self):
         for route,marker in [("/",b"canvas-container"),("/console.html",b"chat-form"),
                              ("/mirror-original.js",b"THREE.FogExp2"),
+                             ("/graphics-settings.js",b"GRAPHICS_STORAGE_KEY"),
                              ("/vendor/three.module.js",b"WebGLRenderer"),
                              ("/vendor/three-addons/controls/OrbitControls.js",b"OrbitControls"),
                              ("/vendor/d3-force-3d.min.js",b"forceSimulation")]:
@@ -158,6 +159,19 @@ class NodeProxyTests(unittest.TestCase):
                  "Origin: https://example.com\r\n\r\n")
             sock.sendall(req.encode("ascii"))
             self.assertIn(b"403 Forbidden",sock.recv(1024))
+
+    def test_graphics_settings_survive_through_existing_node_proxy(self):
+        status,payload,_=self.request("/api/mirror/settings")
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(payload)["source"],"defaults")
+        custom={"fog":0.0015,"light":1.6,"speed":0.7}
+        status,payload,_=self.request("/api/mirror/settings",{"settings":custom})
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(payload)["settings"],custom)
+        status,payload,_=self.request("/api/mirror/settings")
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(payload)["settings"],custom)
+        self.assertNotIn(b"test-proxy-token",payload)
 
     def test_chat_proxy_keeps_server_token_off_browser(self):
         code,body,_=self.request("/api/session",{})
