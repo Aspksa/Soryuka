@@ -278,9 +278,7 @@ class CognitiveV5:
         with self.store.db() as c:
             deleted=c.execute("""DELETE FROM embedding_cache WHERE NOT EXISTS
                 (SELECT 1 FROM memory_embeddings e WHERE
-                 e.model=embedding_cache.model AND e.text_sha256=embedding_cache.text_sha256)
-                AND NOT EXISTS (SELECT 1 FROM memories m WHERE
-                 hex(m.body)=embedding_cache.text_sha256)""")
+                 e.model=embedding_cache.model AND e.text_sha256=embedding_cache.text_sha256)""")
             # The cache includes query vectors. Pruning them is safe; future queries re-embed.
         return deleted.rowcount
 
