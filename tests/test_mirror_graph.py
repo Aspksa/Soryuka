@@ -170,17 +170,24 @@ class MirrorUiTests(unittest.TestCase):
     def test_homepage_is_graph_only_legacy_ui_preserved(self):
         html=(ROOT/"ui"/"index.html").read_text(encoding="utf-8")
         old=(ROOT/"ui"/"console.html").read_text(encoding="utf-8")
-        js=(ROOT/"ui"/"mirror.js").read_text(encoding="utf-8")
-        self.assertIn('id="mirror-canvas"',html)
-        self.assertIn('id="event-feed"',html)
-        self.assertIn('/mirror.js',html)
+        js=(ROOT/"ui"/"mirror-original.js").read_text(encoding="utf-8")
+        self.assertIn('id="canvas-container"',html)
+        self.assertIn('id="feedList"',html)
+        self.assertIn('/mirror-original.js',html)
+        self.assertIn('/vendor/three.module.js',html)
+        self.assertIn('/vendor/d3-force-3d.min.js',html)
+        self.assertNotIn('cdn.jsdelivr.net',html)
+        self.assertNotIn('fonts.googleapis.com',html)
         self.assertNotIn('id="chat-form"',html)
         self.assertNotIn('id="goal-form"',html)
         self.assertIn('id="chat-form"',old)
         self.assertIn('id="goal-form"',old)
         self.assertIn('/app.js',old)
-        self.assertNotIn('d3-force-3d',js)
-        self.assertNotIn('cdn.jsdelivr.net',js)
+        for engine in ("THREE.FogExp2","THREE.WebGLRenderer","d3.forceSimulation",
+                       "THREE.MeshStandardMaterial","THREE.SpriteMaterial",
+                       "THREE.LineSegments","THREE.PointLight","THREE.CatmullRomCurve3",
+                       "new WebSocket","/api/mirror/graph"):
+            self.assertIn(engine,js)
 
 if __name__=="__main__":
     unittest.main()
