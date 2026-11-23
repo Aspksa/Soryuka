@@ -40,7 +40,7 @@ SOFTWARE.
 
 - Three.js **0.160.0**, MIT: https://github.com/mrdoob/three.js
 - d3-force-3d **3.0.6**, MIT: https://github.com/vasturiano/d3-force-3d
-- ws **8.18.3**, MIT: https://github.com/websockets/ws
+- ws **8.23.0**, MIT: https://github.com/websockets/ws
 
 All three packages are installed only into `ui/node_modules/` by npm and are
 not rewritten or redistributed as Soryuka-authored code. Their original license
