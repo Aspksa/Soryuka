@@ -111,6 +111,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return {"items":store.goals()}
         if path=="/api/metrics":
             return {"skills":store.skill_metrics(),"feedback":store.recent_feedback(10)}
+        if path=="/api/recommendations":
+            return {"items":store.recommend_goals()}
         if path=="/api/proposals":
             return {"items":store.proposals(),"preferences":store.preferences()}
         raise StoreError("Unknown API route")
