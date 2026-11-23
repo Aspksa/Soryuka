@@ -111,7 +111,7 @@ class GraphTests(unittest.TestCase):
         reads=[x for x in items if x["kind"]=="read" and "mem:"+a["id"] in x["targets"]]
         self.assertEqual(len(reads),1)
         self.assertGreaterEqual(len([x for x in items if x["category"]=="dialog"]),2)
-        stages={e.get("phase"):e for e in events["items"] if e.get("phase")}
+        stages={e.get("phase"):e for e in items if e.get("phase")}
         self.assertIn("retrieval",stages)
         self.assertIn("response",stages)
         self.assertEqual(stages["retrieval"]["targets"],["mem:"+a["id"]])
