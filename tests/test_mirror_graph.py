@@ -98,12 +98,6 @@ class GraphTests(unittest.TestCase):
         self.assertTrue(any(e["title"]=="Воспоминание сохранено"
                and "mem:"+memory["id"] in e["targets"] for e in events["items"]))
         self.assertFalse(events["simulated"])
-        stages={e.get("phase"):e for e in events["items"] if e.get("phase")}
-        self.assertIn("retrieval",stages)
-        self.assertIn("response",stages)
-        self.assertEqual(stages["retrieval"]["targets"],["mem:"+a["id"]])
-        self.assertEqual(stages["retrieval"]["session_node"],"session:"+sid)
-        self.assertEqual(stages["retrieval"]["source"],"sqlite_audit")
         self.assertTrue(all("body" not in e for e in events["items"]))
         tail=activity(self.store,events["cursor"]["audit"],events["cursor"]["message"])
         self.assertEqual(tail["items"],[])
@@ -117,6 +111,12 @@ class GraphTests(unittest.TestCase):
         reads=[x for x in items if x["kind"]=="read" and "mem:"+a["id"] in x["targets"]]
         self.assertEqual(len(reads),1)
         self.assertGreaterEqual(len([x for x in items if x["category"]=="dialog"]),2)
+        stages={e.get("phase"):e for e in events["items"] if e.get("phase")}
+        self.assertIn("retrieval",stages)
+        self.assertIn("response",stages)
+        self.assertEqual(stages["retrieval"]["targets"],["mem:"+a["id"]])
+        self.assertEqual(stages["retrieval"]["session_node"],"session:"+sid)
+        self.assertEqual(stages["retrieval"]["source"],"sqlite_audit")
         dumped=json.dumps(items,ensure_ascii=False)
         self.assertNotIn("Какой чай я люблю?",dumped)
         self.assertNotIn("Люблю китайский чай",dumped)
