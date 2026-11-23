@@ -174,7 +174,8 @@ EVENT_MAP={
   "strategy_approved": ("growth","Метод одобрен","growth"),
   "strategy_rolled_back": ("growth","Метод отозван","growth"),
   "feedback_received": ("learn","Оценка навыка","skill"),
-  "mirror_chat_response": ("read","Использована подтверждённая память","memory"),
+  "mirror_chat_started": ("read","Поиск памяти для ответа","memory"),
+  "mirror_chat_response": ("write","Ответ Сорюки получен","dialog"),
 }
 
 def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)->dict:
@@ -195,7 +196,7 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
         kind,title,category=EVENT_MAP.get(r["action"],("update","Обновлена локальная запись","growth"))
         targets=[]
         subject=str(r["subject"])
-        if r["action"]=="mirror_chat_response":
+        if r["action"] in ("mirror_chat_started","mirror_chat_response"):
             try:
                 obj=json.loads(r["after_json"] or "{}")
                 targets=["mem:"+str(x) for x in obj.get("memory_ids",[])[:8]]
