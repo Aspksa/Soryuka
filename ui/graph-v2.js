@@ -11,7 +11,8 @@ export function graphFingerprint(data){
   // SQLite graph snapshots arrive sorted. Include IDs and relations, not private text.
   return JSON.stringify([
     data.nodes.map(n=>safeId(n.id)),
-    data.edges.map(e=>[endpoint(e.source),endpoint(e.target),safeId(e.type)])
+    data.edges.map(e=>[endpoint(e.source),endpoint(e.target),
+      safeId(e.type),safeId(e.relation)])
   ]);
 }
 
