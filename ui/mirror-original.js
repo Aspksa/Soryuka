@@ -145,6 +145,50 @@ function graphicsFeedback(saved,message){
   const el=document.getElementById('graphics-save-status');
   el.textContent=saved?message:'Применено временно: браузер запретил локальное сохранение.';
 }
+let graphicsEditCount=0;
+let graphicsSaveTimer=null;
+let graphicsSaveQueue=Promise.resolve();
+async function loadProjectGraphics(){
+  try{
+    const response=await fetch('/api/mirror/settings',{cache:'no-store'});
+    if(!response.ok)throw Error('Graphics settings API '+response.status);
+    const data=await response.json();
+    // A slow startup response must not overwrite a user moving a slider.
+    if(graphicsEditCount>0)return;
+    graphics=normalizeGraphics(data.settings);
+    applyGraphics();
+    showGraphicsValues();
+    saveGraphics(graphicsStorage,graphics);
+    graphicsFeedback(true,data.source==='sqlite'
+      ?'Восстановлено из SQLite проекта · изменения сохраняются автоматически.'
+      :'Исходные параметры · изменения сохраняются в SQLite проекта.');
+  }catch{
+    graphicsFeedback(!!graphicsStorage,
+      'SQLite временно недоступна · используются настройки браузера.');
+  }
+}
+function scheduleProjectGraphicsSave(){
+  graphicsEditCount++;
+  clearTimeout(graphicsSaveTimer);
+  const generation=graphicsEditCount;
+  graphicsSaveTimer=setTimeout(()=>{
+    const snapshot={...graphics};
+    // Serialize requests so an older response cannot overwrite a newer preference.
+    graphicsSaveQueue=graphicsSaveQueue.catch(()=>{}).then(async()=>{
+      const response=await fetch('/api/mirror/settings',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({settings:snapshot})
+      });
+      if(!response.ok)throw Error('Graphics settings save failed');
+      if(generation===graphicsEditCount)
+        graphicsFeedback(true,'Сохранено в SQLite проекта и браузере.');
+    }).catch(()=>{
+      if(generation===graphicsEditCount)
+        graphicsFeedback(!!graphicsStorage,
+          'SQLite недоступна · резервная копия сохранена в браузере.');
+    });
+  },280);
+}
 function initializeGraphicsPanel(){
   const toggle=document.getElementById('graphics-toggle');
   const panel=document.getElementById('graphics-panel');
@@ -165,7 +209,8 @@ function initializeGraphicsPanel(){
       applyGraphics();
       showGraphicsValues();
       const result=saveGraphics(graphicsStorage,graphics);
-      graphicsFeedback(result.saved,'Сохранено в этом браузере · применяется сразу.');
+      graphicsFeedback(result.saved,'Применено сразу · сохраняю в SQLite проекта…');
+      scheduleProjectGraphicsSave();
     });
   }
   document.getElementById('graphics-reset').addEventListener('click',()=>{
@@ -173,7 +218,8 @@ function initializeGraphicsPanel(){
     graphics=result.settings;
     applyGraphics();
     showGraphicsValues();
-    graphicsFeedback(result.saved,'Восстановлены исходные настройки agent-mirror.');
+    graphicsFeedback(result.saved,'Исходные параметры восстановлены · сохраняю в проект…');
+    scheduleProjectGraphicsSave();
   });
   window.addEventListener('storage',event=>{
     if(event.key!==GRAPHICS_STORAGE_KEY&&event.key!==null)return;
@@ -188,6 +234,7 @@ function initializeGraphicsPanel(){
     JSON.stringify(graphics)===JSON.stringify(GRAPHICS_DEFAULTS)
       ?'Исходные параметры · сохраняются при изменении.'
       :'Загружены сохранённые настройки графики.');
+  void loadProjectGraphics();
 }
 initializeGraphicsPanel();
 
