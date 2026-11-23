@@ -203,11 +203,20 @@ class SoryukaEngine:
         prompt=persona_prompt(intent,memories,self.store.preferences(),approved_context=extra)
         # Actual start/completion telemetry: the UI displays data access, not hidden thoughts.
         # Best-effort only: failure of optional visualization must not drop a paid chat reply.
+        # These IDs were selected for the prompt context. The visualization MUST NOT
+        # claim the model read or used them internally; no hidden reasoning is exposed.
+        context_ids=[]
+        for record in [*memories[:6],*evidence["sources"][:6]]:
+            source_id=record.get("id")
+            if isinstance(source_id,str) and source_id and source_id not in context_ids:
+                context_ids.append(source_id)
         def mirror_event(action: str) -> None:
             try:
                 with self.store.db() as db:
                     self.store._audit(db,action,sid,None,
-                        json.dumps({"memory_ids":[m["id"] for m in memories[:6] if "id" in m],
+                        json.dumps({"memory_ids":context_ids[:12],
+                                    "context_kind":"selected_for_prompt",
+                                    "phase":"request_started" if action=="mirror_chat_started" else "response_saved",
                                     "intent":event["intent"]},ensure_ascii=False))
             except sqlite3.Error:
                 pass
