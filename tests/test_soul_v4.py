@@ -283,7 +283,7 @@ class API4Tests(unittest.TestCase):
 
     def test_memory_search_and_graph_api(self):
         _,a=self.request("/api/memory",{"kind":"fact","text":"Мой любимый чай","confirmed":True})
-        _,b=self.request("/api/memory",{"kind":"fact","text":"Чайный ритуал","confirmed":True})
+        _,b=self.request("/api/memory",{"kind":"fact","text":"Чай и ритуал","confirmed":True})
         code,found=self.request("/api/memory/search?q=чай")
         self.assertEqual(code,200);self.assertEqual(len(found["items"]),2)
         code,_=self.request("/api/memory/link",{"source_id":a["id"],"target_id":b["id"],
