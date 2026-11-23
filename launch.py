@@ -54,6 +54,42 @@ def ready(port_number:int)->bool:
         return s.connect_ex(("127.0.0.1",port_number))==0
 
 
+def ensure_original_webgl_vendor():
+    """Install browser-only JS dependencies into the portable project once.
+
+    Never install system services or packages globally. Later launches work offline.
+    Node continues to serve UI only; the Python API/SQLite architecture is unchanged.
+    """
+    ui=ROOT/"ui"
+    needed=[
+        ui/"node_modules"/"three"/"build"/"three.module.js",
+        ui/"node_modules"/"three"/"examples"/"jsm"/"controls"/"OrbitControls.js",
+        ui/"node_modules"/"d3-force-3d"/"dist"/"d3-force-3d.min.js",
+        ui/"node_modules"/"ws"/"package.json",
+    ]
+    if all(x.is_file() for x in needed):
+        return
+    npm=shutil.which("npm.cmd") if os.name=="nt" else shutil.which("npm")
+    if not npm:
+        npm=shutil.which("npm")
+    if not npm:
+        raise RuntimeError(
+            "Soryuka 3D requires npm for the first local dependency installation. "
+            "Install Node.js with npm or copy the ui/node_modules folder from an already initialized Soryuka."
+        )
+    print("Setting up original local Three.js 3D engine (one-time npm install)...",flush=True)
+    cmd=[npm,"install","--prefix",str(ui),"--ignore-scripts","--no-audit","--no-fund","--omit=dev"]
+    try:
+        completed=subprocess.run(cmd,cwd=ROOT,check=False,timeout=240)
+    except (OSError,subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("Could not install local Soryuka 3D browser dependencies") from exc
+    if completed.returncode!=0 or not all(x.is_file() for x in needed):
+        raise RuntimeError(
+            "Local 3D dependency installation failed. Check internet/npm for first install; "
+            "after the packages are present, Soryuka runs offline."
+        )
+
+
 def main():
     if sys.version_info<(3,11):
         raise RuntimeError("Python 3.11 or newer is required")
@@ -61,6 +97,11 @@ def main():
     if not node:
         raise RuntimeError("Node.js not found. Only Node for the frontend is required.")
     guard=lock_instance()
+    try:
+        ensure_original_webgl_vendor()
+    except Exception:
+        guard.close()
+        raise
     api_port=port(53554)
     ui_port=port(53555,exclude=api_port)
     env=os.environ.copy()
