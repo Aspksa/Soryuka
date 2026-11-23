@@ -203,6 +203,12 @@ class SoryukaEngine:
         answer,usage=self.cloud.complete([{"role":"system","content":prompt},*turns])
         # Save one atomic exchange only after a successful provider response.
         self.store.save_exchange(sid,text,answer,event["intent"])
+        # Actual memory-access telemetry for the viewer, never private message contents.
+        # This is a successful retrieval event, not an invented visualization of thoughts.
+        with self.store.db() as db:
+            self.store._audit(db,"mirror_chat_response",sid,None,
+                json.dumps({"memory_ids":[m["id"] for m in memories[:6] if "id" in m],
+                            "intent":event["intent"]},ensure_ascii=False))
         suggestions=self.v5.suggested_facts(text)
         quality=self.v5.inspect_answer(answer,plan)
         return {"session_id":sid,"answer":answer,
