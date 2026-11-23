@@ -653,6 +653,7 @@ function updatePositions() {
 // ═══════════════════════════════════════
 
 const tooltip=document.getElementById('tooltip');
+let lastPickAt=0;
 const nodeCard=document.getElementById('node-card');
 const nodeCardClose=document.getElementById('node-card-close');
 const RELATION_TITLES={
@@ -772,8 +773,10 @@ function unhover() {
   highlightConnections(selectedNodeId);
 }
 
-container.addEventListener('mousemove', (event) => {
-  const rect = renderer.domElement.getBoundingClientRect();
+container.addEventListener('mousemove',(event)=>{
+  if(event.buttons || performance.now()-lastPickAt<32)return;
+  lastPickAt=performance.now();
+  const rect=renderer.domElement.getBoundingClientRect();
   mouseNDC.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouseNDC.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
@@ -1159,12 +1162,69 @@ window._rescan = function() {
   fetch('/api/mirror/graph',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('API '+r.status);return r.json();}).then(d=>buildGraph(adaptGraph(d))).catch(e=>console.error('Mirror reload failed:',e));
 };
 
+/**
+ * Camera-distance level of detail. All real SQLite records stay in nodeMap;
+ * distant leaf meshes are not submitted as separate GPU draw calls until zoom.
+ */
+function updateLod(force=false){
+  if(!nodesData)return;
+  const now=performance.now();
+  if(!force&&now-lastLodUpdate<500)return;
+  lastLodUpdate=now;
+  const leaves=nodesData.filter(n=>n.type==='file');
+  const maxLeaves=Math.max(170,Math.floor((nodesData.length>850?300:490)*quality));
+  const visible=new Set(leaves.length<=maxLeaves?leaves.map(n=>n.id):
+    leaves.map(n=>{
+      const p=nodeMeshes[n.id]?.mesh.position;
+      return {id:n.id,dist:p?p.distanceToSquared(camera.position):Infinity};
+    }).sort((a,b)=>a.dist-b.dist).slice(0,maxLeaves).map(n=>n.id));
+  if(selectedNodeId)visible.add(selectedNodeId);
+  if(hoveredNodeId)visible.add(hoveredNodeId);
+  let count=0;
+  for(const n of nodesData){
+    const info=nodeMeshes[n.id];
+    if(!info)continue;
+    const show=n.type!=='file'||visible.has(n.id);
+    info.mesh.visible=show;
+    if(show)count++;
+  }
+  visibleNodeCount=count;
+}
+
+const perfStatus=document.getElementById('perf-status');
+function updateAdaptiveGraphics(now,delta){
+  if(document.hidden)return;
+  frameCount++;
+  if(!frameWindow)frameWindow=now;
+  const elapsed=now-frameWindow;
+  if(elapsed<2200)return;
+  fps=Math.round(frameCount*1000/Math.max(1,elapsed));
+  frameCount=0;frameWindow=now;
+  // Hysteresis and a bounded resolution ratio protect laptop GPUs.
+  const before=quality;
+  if(fps<37)quality=Math.max(.55,Number((quality-.12).toFixed(2)));
+  else if(fps>53)quality=Math.min(1,Number((quality+.06).toFixed(2)));
+  if(before!==quality){
+    renderer.setPixelRatio(Math.max(.5,Math.min(window.devicePixelRatio||1,2)*quality));
+    applyAtmosphere();
+    updateLod(true);
+  }
+  perfStatus.textContent=fps+' FPS · '+visibleNodeCount+'/'+(nodesData?.length||0)+
+    ' узлов · качество '+Math.round(quality*100)+'%';
+}
+window.__soryukaDiagnostics=()=>{
+  return {webgl:!graphicLost,fps,quality,visibleNodes:visibleNodeCount,
+    totalNodes:nodesData?.length||0,fogDensity:scene.fog.density,
+    selectedNode:!!selectedNodeId};
+};
+
 // ═══════════════════════════════════════
 // Animation Loop
 // ═══════════════════════════════════════
 
 function animate() {
   requestAnimationFrame(animate);
+  if(graphicLost)return;
   const now=performance.now();
   // Cap long background-tab pauses; changing speed does not jump or reset the scene.
   const delta=previousFrame?Math.max(0,Math.min(100,now-previousFrame)):16.67;
@@ -1175,16 +1235,21 @@ function animate() {
   // The original force simulation is now clocked by the same user-selected speed.
   // At most four ticks per frame prevent CPU spikes when the tab resumes.
   if(simulation){
-    physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
+    const nodeWeight=(nodesData?.length||0)>650?0.68:1;
+    const workBudget=quality*nodeWeight;
+    physicsProgress+=Math.min(4,delta/16.67*graphics.speed*workBudget);
     let ticks=Math.min(4,Math.floor(physicsProgress));
     physicsProgress-=ticks;
-    while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+    while(ticks-->0&&simulation.alpha()>simulation.alphaMin())simulation.tick();
+    if(simulation.alpha()>simulation.alphaMin())updatePositions();
   }
-  updatePositions();
   controls.update();
-  renderer.render(scene, camera);
+  updateLod();
+  renderer.render(scene,camera);
+  updateAdaptiveGraphics(now,delta);
 }
 animate();
+window.dispatchEvent(new Event('soryuka:scene-ready'));
 
 // ═══════════════════════════════════════
 // Resize
