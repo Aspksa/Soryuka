@@ -184,6 +184,16 @@ class CognitiveV5:
                            (max(1,min(int(limit),50)),)).fetchall()
         return [dict(r) for r in rows]
 
+    def delete_episode(self,episode_id:str,confirmed:bool)->bool:
+        if confirmed is not True:
+            raise StoreError("Explicit confirmation required to delete an episode")
+        eid=check_id(episode_id)
+        with self.store.db() as c:
+            changed=c.execute("DELETE FROM memory_episodes WHERE id=?",(eid,))
+            if changed.rowcount:
+                self.store._audit(c,"episode_deleted",eid,None,None)
+        return bool(changed.rowcount)
+
     def causal_link(self,cause_id:str,effect_id:str,evidence:str,confirmed:bool)->dict:
         if confirmed is not True:
             raise StoreError("Causal link requires explicit approval")
