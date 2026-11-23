@@ -3,20 +3,28 @@ on:
   pull_request:
     paths:
       - "character/**"
+      - "core/**"
+      - "ui/**"
       - "docs/**"
       - "tests/**"
+      - "launch.py"
+      - "START-SORYUKA.bat"
       - ".github/workflows/personality-validation.yml"
   push:
     branches: [main]
     paths:
       - "character/**"
+      - "core/**"
+      - "ui/**"
       - "tests/**"
+      - "launch.py"
+      - "START-SORYUKA.bat"
       - ".github/workflows/personality-validation.yml"
 permissions:
   contents: read
 jobs:
   personality:
-    name: Personality contract — ${{ matrix.os }}
+    name: Soryuka runtime — ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -27,7 +35,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run unit tests
+      - name: Validate Python syntax
+        run: python -m compileall -q core character tests launch.py
+      - name: Run Python unit and API integration tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
-      - name: Validate persona configuration
+      - name: Validate complete persona canon
         run: python character/living_personality_runtime.py
+      - name: Validate Node frontend syntax
+        run: |
+          node --check ui/server.mjs
+          node --check ui/app.js
