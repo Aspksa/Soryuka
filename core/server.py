@@ -18,7 +18,7 @@ MAX_BODY=32768
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version="SoryukaLocal/3.0"
+    server_version="SoryukaLocal/4.0"
 
     def log_message(self, format, *args):
         # Avoid logging private chat bodies or secret headers.
@@ -91,7 +91,7 @@ class AppHandler(BaseHTTPRequestHandler):
         store=self.server.store
         engine=self.server.engine
         if path=="/api/health":
-            return {"ok":True,"version":"3.0","configured":engine.cloud.ready(),
+            return {"ok":True,"version":"4.0","configured":engine.cloud.ready(),
                     "database":"ready","external_calls_automatic":False}
         if path=="/api/profile":
             return engine.profile()
@@ -115,6 +115,29 @@ class AppHandler(BaseHTTPRequestHandler):
             return {"items":store.recommend_goals()}
         if path=="/api/proposals":
             return {"items":store.proposals(),"preferences":store.preferences()}
+        v4=engine.v4
+        if path=="/api/memory/search":
+            return {"items":v4.memory_index(params.get("q",[""])[0])}
+        if path=="/api/memory/graph":
+            return {"items":v4.links(params.get("id",[None])[0])}
+        if path=="/api/memory/review":
+            return {"items":v4.review_candidates(params.get("id",[""])[0])}
+        if path=="/api/memory/provenance":
+            return v4.provenance(params.get("id",[""])[0])
+        if path=="/api/memory/chronology":
+            return {"items":v4.chronology()}
+        if path=="/api/relationship":
+            return v4.relationship_context()
+        if path=="/api/academy/map":
+            return {"items":v4.skill_map()}
+        if path=="/api/academy/assessments":
+            return {"items":v4.assessments(params.get("goal_id",[None])[0])}
+        if path=="/api/academy/strategies":
+            return {"items":v4.strategies()}
+        if path=="/api/academy/council":
+            return {"items":v4.development_council()}
+        if path=="/api/academy/diary":
+            return {"items":v4.diary()}
         raise StoreError("Unknown API route")
 
     def post(self,path:str,body:dict)->dict|list:
@@ -148,6 +171,29 @@ class AppHandler(BaseHTTPRequestHandler):
             return store.propose_change(body.get("field",""),body.get("value",""),body.get("reason",""))
         if path=="/api/proposal/action":
             return store.change_action(body.get("id",""),body.get("action",""))
+        v4=engine.v4
+        if path=="/api/memory/link":
+            return v4.link(body.get("source_id",""),body.get("target_id",""),
+                           body.get("relation",""),body.get("confirmed",False))
+        if path=="/api/memory/unlink":
+            return {"removed":v4.unlink(body.get("source_id",""),body.get("target_id",""),
+                                         body.get("relation",""))}
+        if path=="/api/memory/provenance":
+            return v4.set_provenance(body.get("id",""),body.get("status",""),
+                                     body.get("source_note",""),body.get("confirmed",False))
+        if path=="/api/memory/merge":
+            return v4.merge_memories(body.get("keep_id",""),body.get("remove_id",""),
+                                      body.get("confirmed",False))
+        if path=="/api/academy/assessment":
+            return v4.assessment(body.get("goal_id",""),body.get("question",""),
+                    body.get("reference",""),body.get("answer",""),body.get("confirmed",False),
+                    body.get("review",""))
+        if path=="/api/academy/strategy":
+            return v4.propose_strategy(body.get("skill",""),body.get("name",""),
+                    body.get("baseline"),body.get("trial"),body.get("evidence",""),
+                    body.get("confirmed",False))
+        if path=="/api/academy/strategy/action":
+            return v4.strategy_action(body.get("id",""),body.get("action",""))
         raise StoreError("Unknown API route")
 
 
