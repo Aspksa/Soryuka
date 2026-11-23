@@ -332,19 +332,13 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 }
 </script>
 
+<script src="/chat-shared.js"></script>
 <script>
 (function(){
   const byId=id=>document.getElementById(id);
   const avatar=byId('soryuka-avatar'),overlay=byId('soryuka-chat-overlay'),close=byId('soryuka-chat-close'),messages=byId('soryuka-chat-messages'),form=byId('soryuka-chat-form'),input=byId('soryuka-chat-input'),send=byId('soryuka-chat-send'),status=byId('soryuka-chat-status');
   let session='',loaded=false,busy=false,lastFocus=null,loading=null,opening=0;
-  const sessionKey='soryuka.session';
-  async function api(path,data){
-    const response=await fetch('/api'+path,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
-    let json;
-    try{json=await response.json();}catch{throw Error('Сервер вернул некорректный ответ');}
-    if(!response.ok)throw Error(json.error||'Ошибка '+response.status);
-    return json;
-  }
+  const {api,history,ensureSession,currentSession,key:sessionKey}=window.SoryukaChat;
   function add(role,body){
     const el=document.createElement('div');
     el.className='soryuka-chat-message '+(role==='user'?'user':'assistant');
@@ -353,17 +347,15 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
     messages.scrollTop=messages.scrollHeight;
   }
   async function load(){
-    const stored=localStorage.getItem(sessionKey)||'';
+    const stored=currentSession();
     if(stored!==session){session=stored;loaded=false;}
     if(!session){
-      session=(await api('/session',{})).session_id;
-      localStorage.setItem(sessionKey,session);
+      session=await ensureSession();
     }
     // Never replace an existing session on transient network/SQLite errors.
-    const result=await api('/history?session_id='+encodeURIComponent(session));
-    if(!Array.isArray(result.items))throw Error('Некорректная история');
+    const items=await history(session);
     messages.replaceChildren();
-    if(result.items.length)result.items.forEach(item=>add(item.role,item.body));
+    if(items.length)items.forEach(item=>add(item.role,item.body));
     else add('assistant','Мой хозяин, я готова к беседе.');
     loaded=true;
     status.textContent='Локальная история SQLite';
