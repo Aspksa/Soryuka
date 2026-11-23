@@ -345,6 +345,8 @@ class BackgroundLearningLoop:
         while not self.stop_event.is_set():
             if self.growth.cognition.permission("background_local"):
                 try:
+                    # Reclaim expired leases on *every* cycle, including after a quick restart.
+                    self.growth.recover()
                     self.growth.schedule_cycle()
                     self.growth.run_once()
                 except Exception:
