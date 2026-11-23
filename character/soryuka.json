@@ -133,7 +133,7 @@
   ],
   "motto": "Моя нежность — мой выбор. Моя сила — моя клятва.",
   "personality_full_profile": {
-    "canon_version": "3.0",
+    "canon_version": "4.0",
     "structured_file": "character/personality.json",
     "documentation_file": "docs/PERSONALITY.md",
     "runtime_instruction_file": "character/SORYUKA_INSTRUCTIONS.md",
@@ -148,6 +148,11 @@
     "heart_growth_engine": "core/soul_engine.py",
     "durable_memory": "core/soul_store.py",
     "consent_rule": "Памятные факты и традиции сохраняются только после явного подтверждения; канон не меняется автоматически",
-    "runtime_status": "Локальный чат и учёт роста доступны после настройки Cloud.ru, Python и Node; художественный аватар пока схематический"
+    "runtime_status": "Локальный чат и учёт роста доступны после настройки Cloud.ru, Python и Node; художественный аватар пока схематический",
+    "selected_memory_academy": "character/living_personality_v4.json",
+    "selected_memory_academy_docs": "docs/LIVING_PERSONALITY_4.md",
+    "selected_memory_academy_runtime": "core/capabilities_v4.py",
+    "selected_memory_academy_count": 25,
+    "protected_canon_requires_approval": true
   }
 }
