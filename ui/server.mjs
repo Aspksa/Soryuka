@@ -17,6 +17,8 @@ const staticFiles=new Map([
   ['/console','console.html'],['/console.html','console.html'],
   ['/style.css','style.css'],['/app.js','app.js'],
   ['/mirror-original.js','mirror-original.js'],
+  ['/graph-v2.js','graph-v2.js'],
+  ['/mirror-bootstrap.js','mirror-bootstrap.js'],
   ['/graphics-settings.js','graphics-settings.js'],
   ['/vendor/three.module.js','node_modules/three/build/three.module.js'],
   ['/vendor/three-addons/controls/OrbitControls.js','node_modules/three/examples/jsm/controls/OrbitControls.js'],
@@ -130,7 +132,11 @@ function eventForOriginal(item){
     timestamp:item.at,
     query:'', // Never put private chat text into feed.
     results:['search','grep','learn','growth','link','delete'].includes(type)?targets.map(path=>({path,score:1})):[],
-    title:item.title
+    title:item.title,
+    targets,
+    source:item.source,
+    phase:item.phase||null,
+    context_kind:item.context_kind||null
   };
 }
 mirrorWss.on('connection',ws=>{
