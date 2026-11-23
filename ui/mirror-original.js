@@ -1294,9 +1294,18 @@ function updateAdaptiveGraphics(now,delta){
     ' узлов · качество '+Math.round(quality*100)+'%';
 }
 window.__soryukaDiagnostics=()=>{
+  // Only rendering diagnostics are exposed; never private memory bodies or API tokens.
+  const core=nodeMeshes['core:soryuka'];
+  let center=null;
+  if(core){
+    const point=core.mesh.position.clone().project(camera);
+    const rect=renderer.domElement.getBoundingClientRect();
+    center={x:Math.round(rect.left+(point.x+1)*rect.width/2),
+      y:Math.round(rect.top+(1-point.y)*rect.height/2)};
+  }
   return {webgl:!graphicLost,fps,quality,visibleNodes:visibleNodeCount,
     totalNodes:nodesData?.length||0,fogDensity:scene.fog.density,
-    selectedNode:!!selectedNodeId};
+    selectedNode:!!selectedNodeId,coreScreen:center};
 };
 
 // ═══════════════════════════════════════
