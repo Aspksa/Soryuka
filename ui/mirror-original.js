@@ -24,8 +24,8 @@ let animationClock=0;
 let previousFrame=0;
 let physicsProgress=0;
 
-/** Adapt Soryuka's actual SQLite graph to the original agent-mirror 3D renderer.
- * No fabricated memories, no OpenClaw watcher, no leaked Cloud.ru key.
+/** Adapt Soryuka's actual SQLite graph to the Soryuka 3D renderer.
+ * No fabricated memories or private Cloud.ru keys in browser code.
  */
 function adaptGraph(raw){
   if(!raw || !Array.isArray(raw.nodes) || !Array.isArray(raw.links))throw new Error('Неверные данные графа');
@@ -61,7 +61,14 @@ function escapeHtml(value){
 // Constants
 // ═══════════════════════════════════════
 
-const ACCESS_COLORS = { read: '#3b82f6', write: '#fa5838', search: '#a855f7', grep: '#22d3ee' };
+const ACCESS_COLORS = { read: '#3b82f6', write: '#fa5838', search: '#a855f7', grep: '#22d3ee', learn:'#b6a0ff', growth:'#54d8bc', link:'#22d3ee', delete:'#ef4444' };
+const CATEGORY_TITLES = {
+  core:'Сорюка',memory:'Память',dialog:'Диалоги',story:'История',
+  learning:'Обучение',growth:'Развитие',skill:'Навыки'
+};
+const NODE_TYPE_TITLES = {core:'Ядро Сорюки',category:'Раздел памяти',file:'Запись'};
+const EVENT_TITLES = {read:'Чтение',write:'Запись',search:'Поиск',
+  grep:'Поиск текста',learn:'Обучение',growth:'Развитие',link:'Связь',delete:'Удаление'};
 const HEAT_COLORS = ['#3b82f6','#6366f1','#a855f7','#ec4899','#f97316','#ef4444'];
 const NODE_SCALE = 0.4;
 
@@ -345,19 +352,10 @@ function tickAnimations(now) {
 // ═══════════════════════════════════════
 
 function findNodeById(targetPath) {
-  if (!targetPath) return null;
-  if (nodeMap[targetPath]) return targetPath;
-  const tryPaths = [
-    targetPath, 'mem/' + targetPath, 'core/' + targetPath,
-    'mem/' + targetPath.replace(/^.*\/memory\//, ''),
-    'core/' + targetPath.replace(/^.*\/clawd\//, ''),
-  ];
-  for (const p of tryPaths) { if (nodeMap[p]) return p; }
-  const basename = targetPath.split('/').pop();
-  for (const id of Object.keys(nodeMap)) {
-    if (id.endsWith('/' + basename) || id.endsWith('/' + basename.replace('.md', '') + '.md')) return id;
-  }
-  return null;
+  // Soryuka emits exact SQLite graph IDs. No fallback to foreign directories,
+  // markdown filenames or legacy agent aliases, which could select wrong nodes.
+  if (typeof targetPath !== 'string') return null;
+  return Object.hasOwn(nodeMap, targetPath) ? targetPath : null;
 }
 
 // ═══════════════════════════════════════
@@ -499,8 +497,11 @@ function buildGraph(data) {
 
 function buildLegend(colors, nodes) {
   const legendEl = document.getElementById('legend');
-  legendEl.innerHTML = '<h3>Memory Categories</h3>';
-  const order = ['core','identity','work','projects','meta','family','procedures','reflections','daily','nova-letters'];
+  legendEl.replaceChildren();
+  const title=document.createElement('h3');
+  title.textContent='Разделы памяти Сорюки';
+  legendEl.appendChild(title);
+  const order=['core','memory','dialog','story','learning','growth','skill'];
   const cats = Object.entries(colors)
     .filter(([cat]) => nodes.some(n => n.category === cat))
     .sort((a, b) => {
@@ -510,7 +511,12 @@ function buildLegend(colors, nodes) {
   for (const [cat, color] of cats) {
     const item = document.createElement('div');
     item.className = 'legend-item';
-    item.innerHTML = `<div class="legend-dot" style="background:${color}"></div>${cat.replace(/[-_]/g, ' ')}`;
+    const dot=document.createElement('div');
+    dot.className='legend-dot';
+    // Colors come from the fixed local category palette, never user input.
+    dot.style.background=/^#[a-fA-F0-9]{6}$/.test(color)?color:'#8088a0';
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(CATEGORY_TITLES[cat]||cat.replace(/[-_]/g,' ')));
     item.onclick = () => {
       const dimmed = item.classList.toggle('dimmed');
       for (const node of nodesData) {
@@ -526,11 +532,15 @@ function buildLegend(colors, nodes) {
     legendEl.appendChild(item);
   }
   const sep = document.createElement('div'); sep.className = 'legend-sep'; legendEl.appendChild(sep);
-  const ah = document.createElement('h3'); ah.textContent = 'Access Types'; ah.style.marginTop = '4px'; legendEl.appendChild(ah);
+  const ah = document.createElement('h3'); ah.textContent = 'Типы активности'; ah.style.marginTop = '4px'; legendEl.appendChild(ah);
   for (const [type, color] of Object.entries(ACCESS_COLORS)) {
     const item = document.createElement('div');
     item.className = 'legend-item';
-    item.innerHTML = `<div class="legend-dot" style="background:${color};box-shadow:0 0 6px ${color}"></div>${type}`;
+    const dot=document.createElement('div');
+    dot.className='legend-dot';
+    dot.style.background=color;
+    dot.style.boxShadow='0 0 6px '+color;
+    item.append(dot,document.createTextNode(EVENT_TITLES[type]||type));
     legendEl.appendChild(item);
   }
 }
@@ -587,10 +597,10 @@ function hoverNode(nodeId, event) {
   const count = accessCounts[nodeId] || 0;
   tooltip.style.display = 'block';
   tooltip.innerHTML = `
-    <div class="tt-type">${escapeHtml(node.type)}</div>
+    <div class="tt-type">${escapeHtml(NODE_TYPE_TITLES[node.type]||node.type)}</div>
     <div class="tt-label">${escapeHtml(node.label)}</div>
-    <div class="tt-cat" style="color:${colorsData[node.category]||'#888'}">${escapeHtml(node.category)}</div>
-    ${count ? `<div class="tt-access">Accessed ${count} time${count > 1 ? 's' : ''}</div>` : ''}
+    <div class="tt-cat" style="color:${colorsData[node.category]||'#888'}">${escapeHtml(CATEGORY_TITLES[node.category]||node.category)}</div>
+    ${count ? `<div class="tt-access">Обращений к узлу: ${count}</div>` : ''}
   `;
   tooltip.style.left = (event.clientX + 15) + 'px';
   tooltip.style.top = (event.clientY - 10) + 'px';
@@ -842,16 +852,16 @@ let feedItems = [];
 function addFeedItem(event) {
   totalEvents++;
   document.getElementById('eventCount').textContent = totalEvents;
-  document.getElementById('feedCount').textContent = totalEvents + ' events';
+  document.getElementById('feedCount').textContent = totalEvents + ' событий';
 
   const item = document.createElement('div');
   item.className = 'feed-item new';
   const time = new Date(event.timestamp || Date.now());
-  const ts = time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const ts = time.toLocaleTimeString('ru-RU', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const p = escapeHtml(event.path ? event.path : 'Локальная операция');
-  let html = `<div class="feed-time">${ts}</div><span class="feed-badge ${escapeHtml(event.type)}">${escapeHtml(event.type)}</span><span class="feed-path">${p}</span>`;
+  let html = `<div class="feed-time">${ts}</div><span class="feed-badge ${escapeHtml(event.type)}">${escapeHtml(EVENT_TITLES[event.type]||'Активность')}</span><span class="feed-path">${p}</span>`;
   if (event.query) html += `<div class="feed-query">"${escapeHtml(event.query)}"</div>`;
-  if (event.results && event.results.length) html += `<div class="feed-path" style="color:#666;margin-top:2px">${event.results.length} match${event.results.length > 1 ? 'es' : ''}</div>`;
+  if (event.results && event.results.length) html += `<div class="feed-path" style="color:#666;margin-top:2px">${event.results.length} совпадений</div>`;
   item.innerHTML = html;
 
   const emptyMsg = feedList.querySelector('.feed-empty');
@@ -871,8 +881,8 @@ function connectWebSocket() {
   const ws = new WebSocket(`${proto}//${location.host}/mirror-ws`);
   const statusEl = document.getElementById('wsStatus');
 
-  ws.onopen = () => { statusEl.textContent = 'CONNECTED'; statusEl.className = 'ws-status connected'; };
-  ws.onclose = () => { statusEl.textContent = 'DISCONNECTED'; statusEl.className = 'ws-status disconnected'; setTimeout(connectWebSocket, 3000); };
+  ws.onopen = () => { statusEl.textContent = 'СВЯЗЬ УСТАНОВЛЕНА'; statusEl.className = 'ws-status connected'; };
+  ws.onclose = () => { statusEl.textContent = 'СВЯЗЬ ПОТЕРЯНА'; statusEl.className = 'ws-status disconnected'; setTimeout(connectWebSocket, 3000); };
   ws.onerror = () => { ws.close(); };
 
   ws.onmessage = (msg) => {
@@ -992,12 +1002,12 @@ window._toggleDebug = function() {
   const btn = document.getElementById('debugBtn');
   if (debugMode) {
     btn.style.background = '#a855f7'; btn.style.color = '#fff';
-    btn.textContent = '\u2728 Debug ON (click nodes)';
+    btn.textContent = '\u2728 Тест включён · нажимай на узлы';
     lastDebugNode = null;
     renderer.domElement.style.cursor = 'crosshair';
   } else {
     btn.style.background = '#a855f720'; btn.style.color = '#a855f7';
-    btn.textContent = '\u2728 Debug Pulse';
+    btn.textContent = '\u2728 Тест импульса';
     lastDebugNode = null;
     renderer.domElement.style.cursor = 'default';
   }
