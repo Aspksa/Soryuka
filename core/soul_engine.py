@@ -6,6 +6,7 @@ Chat calls occur only after an explicit request and configured Cloud.ru credenti
 from __future__ import annotations
 
 import json
+import sqlite3
 import os
 from pathlib import Path
 import sys
@@ -200,15 +201,21 @@ class SoryukaEngine:
         turns=[{"role":x["role"],"content":x["body"][:6000]} for x in history]
         turns.append({"role":"user","content":text})
         prompt=persona_prompt(intent,memories,self.store.preferences(),approved_context=extra)
+        # Actual start/completion telemetry: the UI displays data access, not hidden thoughts.
+        # Best-effort only: failure of optional visualization must not drop a paid chat reply.
+        def mirror_event(action: str) -> None:
+            try:
+                with self.store.db() as db:
+                    self.store._audit(db,action,sid,None,
+                        json.dumps({"memory_ids":[m["id"] for m in memories[:6] if "id" in m],
+                                    "intent":event["intent"]},ensure_ascii=False))
+            except sqlite3.Error:
+                pass
+        mirror_event("mirror_chat_started")
         answer,usage=self.cloud.complete([{"role":"system","content":prompt},*turns])
         # Save one atomic exchange only after a successful provider response.
         self.store.save_exchange(sid,text,answer,event["intent"])
-        # Actual memory-access telemetry for the viewer, never private message contents.
-        # This is a successful retrieval event, not an invented visualization of thoughts.
-        with self.store.db() as db:
-            self.store._audit(db,"mirror_chat_response",sid,None,
-                json.dumps({"memory_ids":[m["id"] for m in memories[:6] if "id" in m],
-                            "intent":event["intent"]},ensure_ascii=False))
+        mirror_event("mirror_chat_response")
         suggestions=self.v5.suggested_facts(text)
         quality=self.v5.inspect_answer(answer,plan)
         return {"session_id":sid,"answer":answer,
