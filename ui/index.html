@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>霜琉華 — Soryuka Original 3D Memory Mirror</title>
+<title>霜琉華 — Сорюка · Живая карта памяти</title>
 <script src="/vendor/d3-force-3d.min.js"></script>
 <style>
 /* Fonts kept local: no Google Fonts, no external requests. */
@@ -185,14 +185,14 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 
 <div class="header">
   <div>
-    <h1>SORYUKA MEMORY GRAPH <span class="live-badge"><span class="live-dot"></span> LIVE</span></h1>
-    <div class="subtitle">Three.js · WebGL · FogExp2 · SQLite</div>
+    <h1>СОРЮКА · КАРТА ПАМЯТИ <span class="live-badge"><span class="live-dot"></span> РАБОТАЕТ</span></h1>
+    <div class="subtitle">Живая трёхмерная карта локальной памяти</div>
   </div>
   <div class="stats">
-    <div><span id="nodeCount">0</span> nodes</div>
-    <div><span id="edgeCount">0</span> edges</div>
-    <div><span id="refCount">0</span> cross-refs</div>
-    <div><span id="eventCount">0</span> events</div>
+    <div><span id="nodeCount">0</span> узлов</div>
+    <div><span id="edgeCount">0</span> связей</div>
+    <div><span id="refCount">0</span> перекрёстных связей</div>
+    <div><span id="eventCount">0</span> событий</div>
   </div>
 </div>
 
@@ -200,7 +200,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
   <button onclick="window._resetView()">Сброс ракурса</button>
   <button onclick="window._toggleLabels()">Подписи узлов</button>
   <button onclick="window._highlightRefs()">Подсветить связи</button>
-  <button id="debugBtn" onclick="window._toggleDebug()" style="background:#a855f720;border-color:#a855f740;color:#a855f7;">&#10024; Debug Pulse</button>
+  <button id="debugBtn" onclick="window._toggleDebug()" style="background:#a855f720;border-color:#a855f740;color:#a855f7;">&#10024; Тест импульса</button>
   <button onclick="window._rescan()">Обновить граф</button>
   <button type="button" id="graphics-toggle" aria-expanded="false" aria-controls="graphics-panel">⚙ Настройки графики</button>
 </div>
@@ -240,7 +240,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <div class="activity-feed">
   <div class="feed-header">
     <span>Активность памяти</span>
-    <span class="event-count" id="feedCount">0 events</span>
+    <span class="event-count" id="feedCount">0 событий</span>
   </div>
   <div class="feed-list" id="feedList">
     <div class="feed-empty">Ожидание реальных событий из SQLite…</div>
