@@ -124,6 +124,32 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 .ws-status.connected { color: #22c55e; background: #22c55e10; }
 .ws-status.disconnected { color: #ef4444; background: #ef444410; }
 
+/* Adjustable graphics: compact panel outside the render canvas. */
+.graphics-settings[hidden]{display:none}
+.graphics-settings{position:fixed;top:255px;right:320px;z-index:25;width:286px;
+  max-height:calc(100dvh - 280px);overflow:auto;padding:17px;border:1px solid #394055;
+  background:#10121cec;box-shadow:0 18px 50px #000a;border-radius:12px;backdrop-filter:blur(17px);
+  font-family:'Segoe UI',sans-serif;color:#dae0f0}
+.graphics-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}
+.graphics-heading h2{font-size:11px;letter-spacing:.15em;color:#e8c991;font-weight:600}
+.graphics-heading button{border:0;background:transparent;color:#9daac6;font-size:24px;line-height:1;cursor:pointer}
+.graphics-option{margin-bottom:18px}
+.graphics-label{display:flex;justify-content:space-between;gap:10px;align-items:center;
+  margin-bottom:8px;font-size:12px;color:#c4cce1}
+.graphics-label output{font:11px Consolas,monospace;color:#e8c991;font-variant-numeric:tabular-nums}
+.graphics-option input[type="range"]{display:block;width:100%;margin:0;cursor:pointer;accent-color:#dfb66d}
+.graphics-option p{font-size:10px;line-height:1.5;color:#76839e;margin-top:7px}
+#graphics-reset{width:100%;border:1px solid #5e4c39;border-radius:6px;padding:10px;
+  color:#eac68b;background:#2e241a55;font-size:11px;cursor:pointer}
+#graphics-reset:hover{background:#57452b66}
+#graphics-save-status{font-size:10px;line-height:1.5;color:#8395ac;margin-top:10px}
+.graphics-settings button:focus-visible,.graphics-settings input:focus-visible,
+#graphics-toggle:focus-visible{outline:2px solid #dcbc7e;outline-offset:3px}
+@media(max-width:800px){.graphics-settings{right:250px;top:265px;width:min(286px,calc(100vw - 265px));max-height:calc(100dvh - 285px)}}
+@media(max-width:560px){.graphics-settings{right:185px;top:260px;width:min(280px,calc(100vw - 194px));max-height:calc(100dvh - 270px);padding:12px}
+  .graphics-label{flex-wrap:wrap}.graphics-settings p{font-size:9px}}
+@media(max-height:650px){.graphics-settings{top:80px;max-height:calc(100dvh - 100px)}}
+
 /* Local Soryuka extras: original upstream palette/layout retained. */
 .soryuka-feed-footer {padding:14px 17px 17px;border-top:1px solid #1a1a25;background:#0d0d14;color:#6f7689;font-size:11px;line-height:1.5}
 .soryuka-feed-footer p {font-size:10px;line-height:1.6;color:#575e70;margin:8px 0 11px}
@@ -176,7 +202,32 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
   <button onclick="window._highlightRefs()">Подсветить связи</button>
   <button id="debugBtn" onclick="window._toggleDebug()" style="background:#a855f720;border-color:#a855f740;color:#a855f7;">&#10024; Debug Pulse</button>
   <button onclick="window._rescan()">Обновить граф</button>
+  <button type="button" id="graphics-toggle" aria-expanded="false" aria-controls="graphics-panel">⚙ Настройки графики</button>
 </div>
+
+<section id="graphics-panel" class="graphics-settings" aria-labelledby="graphics-title" hidden>
+  <div class="graphics-heading">
+    <h2 id="graphics-title">НАСТРОЙКИ 3D</h2>
+    <button type="button" id="graphics-close" aria-label="Закрыть настройки">×</button>
+  </div>
+  <div class="graphics-option">
+    <div class="graphics-label"><label for="graphics-fog">Глубина тумана</label><output id="graphics-fog-value" for="graphics-fog">0.00080</output></div>
+    <input id="graphics-fog" type="range" min="0" max="0.003" step="0.00005" value="0.0008">
+    <p>0 — без тумана · 0.003 — густой</p>
+  </div>
+  <div class="graphics-option">
+    <div class="graphics-label"><label for="graphics-light">Яркость освещения</label><output id="graphics-light-value" for="graphics-light">100%</output></div>
+    <input id="graphics-light" type="range" min="0.2" max="2" step="0.1" value="1">
+    <p>20% — приглушённо · 200% — ярко</p>
+  </div>
+  <div class="graphics-option">
+    <div class="graphics-label"><label for="graphics-speed">Скорость анимации</label><output id="graphics-speed-value" for="graphics-speed">1.00×</output></div>
+    <input id="graphics-speed" type="range" min="0.25" max="2" step="0.05" value="1">
+    <p>Движение графа, световые импульсы и частицы</p>
+  </div>
+  <button type="button" id="graphics-reset">Сбросить к оригиналу</button>
+  <p id="graphics-save-status" role="status" aria-live="polite">Параметры хранятся в браузере.</p>
+</section>
 
 <div class="legend" id="legend"></div>
 <div class="tooltip" id="tooltip"></div>
