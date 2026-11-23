@@ -98,6 +98,12 @@ class GraphTests(unittest.TestCase):
         self.assertTrue(any(e["title"]=="Воспоминание сохранено"
                and "mem:"+memory["id"] in e["targets"] for e in events["items"]))
         self.assertFalse(events["simulated"])
+        stages={e.get("phase"):e for e in events["items"] if e.get("phase")}
+        self.assertIn("retrieval",stages)
+        self.assertIn("response",stages)
+        self.assertEqual(stages["retrieval"]["targets"],["mem:"+a["id"]])
+        self.assertEqual(stages["retrieval"]["session_node"],"session:"+sid)
+        self.assertEqual(stages["retrieval"]["source"],"sqlite_audit")
         self.assertTrue(all("body" not in e for e in events["items"]))
         tail=activity(self.store,events["cursor"]["audit"],events["cursor"]["message"])
         self.assertEqual(tail["items"],[])
@@ -173,7 +179,20 @@ class MirrorUiTests(unittest.TestCase):
         js=(ROOT/"ui"/"mirror-original.js").read_text(encoding="utf-8")
         self.assertIn('id="canvas-container"',html)
         self.assertIn('id="feedList"',html)
-        self.assertIn('/mirror-original.js',html)
+        self.assertIn('/mirror-boot.js',html)
+        boot=(ROOT/"ui"/"mirror-boot.js").read_text(encoding="utf-8")
+        self.assertIn("import('./mirror-original.js')",boot)
+        for marker in ('webglcontextlost','soryuka:scene-ready','buildAtmosphere',
+                       'updateAdaptiveGraphics','updateLod','seedNewNodes',
+                       'renderNodeCard','showRecordedAnswerStage','animateRecordedRoute'):
+            self.assertIn(marker,js if marker!='soryuka:scene-ready' else boot)
+        for element in ('node-card','node-card-close','node-card-links','perf-status',
+                        'scene-status','answer-stage','soryuka-error-retry'):
+            self.assertIn('id="'+element+'"',html)
+        self.assertNotIn('/mirror.js',html)
+        self.assertNotIn('/mirror.css',html)
+        self.assertFalse((ROOT/"ui"/"mirror.js").exists())
+        self.assertFalse((ROOT/"ui"/"mirror.css").exists())
         for key in ('fog','light','speed'):
             self.assertIn('id="graphics-'+key+'"',html)
             self.assertIn('id="graphics-'+key+'-value"',html)
