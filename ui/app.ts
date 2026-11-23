@@ -55,11 +55,10 @@ async function loadSessions(){
     const result=await api('/history?session_id='+encodeURIComponent(state.session));
     if(result.items.length){$messages.replaceChildren();result.items.forEach(x=>message(x.role,x.body));}
     else showEmpty();
-  }catch{
-    state.session=(await api('/session',{})).session_id;
-    state.episodePreview=false;
-    localStorage.setItem('soryuka.session',state.session);
-    showEmpty();
+  }catch(error){
+    // A temporary network/SQLite failure must not silently abandon the user's session.
+    notify('История недоступна: '+error.message,true);
+    throw error;
   }
 }
 async function sendMessage(event){
