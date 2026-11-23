@@ -417,9 +417,34 @@ function clearGraph() {
 }
 
 function buildGraph(data) {
+  const {nodes,edges,colors}=data;
+  const previous=nodesData||[];
+  const existingIds=new Set(previous.map(n=>n.id));
+  // Do not reset physics, selection and in-flight pulses for unchanged topology.
+  const sameNodes=previous.length===nodes.length && nodes.every((n,i)=>previous[i]?.id===n.id);
+  const sameEdges=edgesData?.length===edges.length && edges.every((e,i)=>
+    linkId(edgesData[i].source)===e.source &&
+    linkId(edgesData[i].target)===e.target &&
+    edgesData[i].relation===e.relation);
+  if(sameNodes&&sameEdges){
+    for(const update of nodes){
+      const current=nodeMap[update.id];
+      if(current){
+        current.label=update.label;
+        current.status=update.status;
+        current.description=update.description;
+      }
+    }
+    return;
+  }
+  // Persist the spatial layout of existing real records when the memory galaxy grows.
+  seedNewNodes(previous,nodes)(edges);
   clearGraph();
-  const { nodes, edges, colors } = data;
-  nodesData = nodes; edgesData = edges; colorsData = colors;
+  nodesData=nodes;edgesData=edges;colorsData=colors;
+  if(selectedNodeId&&!nodes.some(n=>n.id===selectedNodeId)){
+    selectedNodeId=null;
+    document.getElementById('node-card').hidden=true;
+  }
 
   nodeMap = {};
   nodes.forEach(n => { nodeMap[n.id] = n; });
@@ -431,13 +456,16 @@ function buildGraph(data) {
   // --- Force Simulation (d3-force-3d) ---
   simulation = d3.forceSimulation(nodes)
     .numDimensions(3)
-    .force('link', d3.forceLink(edges).id(d => d.id)
-      .distance(d => d.type === 'structural' ? 80 : d.type === 'contains' ? 50 : 120)
-      .strength(d => d.type === 'structural' ? 0.8 : d.type === 'contains' ? 0.3 : 0.15))
+    .force('link', d3.forceLink(edges).id(d=>d.id)
+      .distance(d=>(d.type==='structural'?90:d.type==='contains'?64:130)
+        +(d.source.size+d.target.size)*NODE_SCALE*2)
+      .strength(d=>d.type==='structural'?0.8:d.type==='contains'?0.38:0.12))
     .force('charge', d3.forceManyBody().strength(d =>
-      d.type === 'category' ? -400 : d.type === 'core' ? -300 : -80))
+      d.type==='category'?-380:d.type==='core'?-300:nodes.length>600?-60:-80))
     .force('center', d3.forceCenter(0, 0, 0))
-    .force('collision', d3.forceCollide().radius(d => d.size * NODE_SCALE + 2))
+    .force('collision', d3.forceCollide()
+      .radius(d=>d.size*NODE_SCALE+Math.max(3,Math.min(8,5+nodes.length/300)))
+      .strength(0.95).iterations(nodes.length>500?1:2))
     .force('x', d3.forceX(0).strength(0.03))
     .force('y', d3.forceY(0).strength(0.03))
     .force('z', d3.forceZ(0).strength(0.03));
@@ -530,7 +558,16 @@ function buildGraph(data) {
   }
 
   // --- Legend ---
-  buildLegend(colors, nodes);
+  buildLegend(colors,nodes);
+  updatePositions();
+  updateLod(true);
+  if(existingIds.size && nodes.length>existingIds.size){
+    const added=nodes.filter(n=>!existingIds.has(n.id));
+    document.getElementById('answer-stage').textContent=
+      'Карта памяти выросла: '+added.length+' новых подтверждённых записей.';
+    for(const n of added.slice(0,5))pulseNode(n.id,colors[n.category]||'#d5b47c',2000);
+  }
+  if(selectedNodeId && nodeMap[selectedNodeId])renderNodeCard(selectedNodeId);
 }
 
 function buildLegend(colors, nodes) {
