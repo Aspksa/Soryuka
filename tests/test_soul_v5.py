@@ -384,6 +384,32 @@ class Api5Tests(unittest.TestCase):
         self.assertEqual(code,400)
 
 
+class SharedChatAndGrowthTests(unittest.TestCase):
+    def test_growth_rejects_parallel_execution_without_claiming_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=SoulStore(Path(directory)/"data.sqlite3")
+            growth=GrowthV5(store,CognitiveV5(store,embed=FakeEmbeddings()))
+            self.assertTrue(growth._run_lock.acquire(blocking=False))
+            try:
+                self.assertEqual(growth.run_once()["status"],"already_running")
+                self.assertEqual(growth.run_once()["network_calls"],0)
+            finally:
+                growth._run_lock.release()
+            self.assertNotEqual(growth.run_once()["status"],"already_running")
+
+    def test_both_chats_use_shared_module(self):
+        shared=(ROOT/"ui"/"chat-shared.js").read_text(encoding="utf-8")
+        index=(ROOT/"ui"/"index.html").read_text(encoding="utf-8")
+        console=(ROOT/"ui"/"console.html").read_text(encoding="utf-8")
+        app=(ROOT/"ui"/"app.js").read_text(encoding="utf-8")
+        self.assertIn('src="/chat-shared.js"',index)
+        self.assertIn('src="/chat-shared.js"',console)
+        self.assertIn('window.SoryukaChat',index)
+        self.assertIn('window.SoryukaChat',app)
+        self.assertIn('async function ensureSession()',shared)
+        self.assertIn('async function history(id)',shared)
+
+
 class V5UIContractTests(unittest.TestCase):
     def test_all_ui_controls_exist_and_js_matches_ts(self):
         page=(ROOT/"ui"/"console.html").read_text(encoding="utf-8")

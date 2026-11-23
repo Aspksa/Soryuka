@@ -5,14 +5,7 @@ const state = {session:localStorage.getItem('soryuka.session')||'',emotion:'sere
 const $messages=byId('messages');
 const $input=byId('message');
 
-async function api(path,data){
-  const response=await fetch('/api'+path,{method:data===undefined?'GET':'POST',
-    headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
-  let json;
-  try{json=await response.json();}catch{throw Error('Некорректный ответ сервера');}
-  if(!response.ok)throw Error(json.error||'Ошибка запроса '+response.status);
-  return json;
-}
+const {api,history,ensureSession,currentSession,setSession,key:sessionKey}=window.SoryukaChat;
 function notify(text,isError=false){
   const el=byId('status');el.textContent=text;el.classList.toggle('error',isError);
 }
@@ -50,16 +43,15 @@ function renderItems(id,items,render){
   items.forEach(row=>root.append(render(row)));
 }
 async function loadSessions(){
-  if(!state.session){const x=await api('/session',{});state.session=x.session_id;state.episodePreview=false;localStorage.setItem('soryuka.session',state.session);}
+  if(!state.session){state.session=await ensureSession();state.episodePreview=false;}
   try{
-    const result=await api('/history?session_id='+encodeURIComponent(state.session));
-    if(result.items.length){$messages.replaceChildren();result.items.forEach(x=>message(x.role,x.body));}
+    const items=await history(state.session);
+    if(items.length){$messages.replaceChildren();items.forEach(x=>message(x.role,x.body));}
     else showEmpty();
-  }catch{
-    state.session=(await api('/session',{})).session_id;
-    state.episodePreview=false;
-    localStorage.setItem('soryuka.session',state.session);
-    showEmpty();
+  }catch(error){
+    // A temporary network/SQLite failure must not silently abandon the user's session.
+    notify('История недоступна: '+error.message,true);
+    throw error;
   }
 }
 async function sendMessage(event){
@@ -67,16 +59,17 @@ async function sendMessage(event){
   const value=$input.value.trim();
   if(!value||state.busy)return;
   state.busy=true;byId('send').disabled=true;
-  clearPlaceholder();message('user',value);$input.value='';
+  clearPlaceholder();message('user',value);
   notify('Сорюка отвечает…');
   try{
     const result=await api('/chat',{session_id:state.session,message:value,intent:byId('intent').value});
+    $input.value='';
     message('assistant',result.answer);
     showFactSuggestions(result.memory_suggestions||[]);
     state.emotion=result.avatar.emotion;state.gesture=result.avatar.gesture;
     byId('emotional-state').textContent=({serene:'Спокойствие',care:'Нежность',play:'Игривость',solemn:'Величие',focus:'Сосредоточенность',concern:'Внимание'})[state.emotion]||state.emotion;
     notify('Cloud.ru · Сорюка на связи');
-  }catch(e){message('assistant','Не удалось получить ответ: '+e.message);notify(e.message,true);}
+  }catch(e){notify('Не удалось подтвердить ответ: '+e.message+'. Проверь историю перед повторной отправкой.',true);}
   finally{state.busy=false;byId('send').disabled=false;$input.focus();}
 }
 async function loadMemories(){
@@ -451,13 +444,13 @@ function setupForms(){
   byId('chat-form').addEventListener('submit',sendMessage);
   $input.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();byId('chat-form').requestSubmit();}});
   byId('new-chat').addEventListener('click',async()=>{
-    try{state.session=(await api('/session',{})).session_id;state.episodePreview=false;localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
+    try{state.session=(await api('/session',{})).session_id;state.episodePreview=false;setSession(state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
   });
   byId('delete-chat').addEventListener('click',async()=>{
     if(!state.session||!confirm('Удалить весь текущий разговор без восстановления?'))return;
     try{await api('/session/delete',{id:state.session});
         state.session=(await api('/session',{})).session_id;
-        localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Разговор удалён');}
+        setSession(state.session);showEmpty();notify('Разговор удалён');}
     catch(e){notify(e.message,true);}
   });
   byId('backup').addEventListener('click',async()=>{
@@ -540,3 +533,12 @@ async function start(){
   }catch(e){notify(e.message,true);}
 }
 start();
+
+window.addEventListener('storage',event=>{
+  if(event.key!==sessionKey)return;
+  const next=event.newValue||'';
+  if(next===state.session)return;
+  if(state.busy){notify('Сессия изменилась в другой вкладке. Обнови страницу после ответа.',true);return;}
+  state.session=next;state.episodePreview=false;
+  loadSessions().catch(error=>notify('История недоступна: '+error.message,true));
+});

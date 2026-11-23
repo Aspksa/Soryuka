@@ -157,7 +157,10 @@ try{
       return previous.call(this,type,...args);
     };
   });
-  await fallback.goto(origin,{waitUntil:'domcontentloaded'});
+  // The WebGL fallback can block DOMContentLoaded on software-rendered CI hosts.
+  // Navigate until headers commit; the explicit visible-state assertion below
+  // remains the real readiness check.
+  await fallback.goto(origin,{waitUntil:'commit'});
   await fallback.locator('#soryuka-engine-error').waitFor({state:'visible',timeout:12000});
   assert.ok(await fallback.locator('#soryuka-engine-error a[href="/console.html"]').isVisible());
   await fallback.screenshot({path:join(artifactDir,'soryuka-webgl-fallback-'+os+'.png')});
