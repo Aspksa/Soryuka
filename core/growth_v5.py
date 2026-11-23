@@ -142,7 +142,7 @@ class GrowthV5:
                 WHERE a.passed=0 AND g.status IN ('approved','completed')
                 ORDER BY a.created_at DESC,a.id DESC LIMIT 12""").fetchall()
         return {"exercises":[{"source_assessment_id":r["id"],"goal_id":r["goal_id"],
-                   "skill":r["skill"],"exercise":r["question"],
+                   "skill":r["skill"],"exercise_available_in_academy":True,
                    "requires_manual_reference_check":True} for r in rows],
                 "auto_generated_new_facts":False}
 
