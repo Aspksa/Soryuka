@@ -309,6 +309,17 @@ async function v5EpisodePreview(){
   renderItems('v5-episode',[d],x=>textItem(x.digest,
     x.message_count+' сообщений · дословные фрагменты, не новая биография'));
 }
+async function v5Episodes(){
+  const d=await api('/v5/episodes');
+  renderItems('v5-episode-list',d.items.slice(0,15),x=>textItem(x.digest,
+    'Источник: разговор '+x.session_id+' · '+x.source_messages+' сообщений',[{
+    label:'Удалить сводку',run:async()=>{
+      if(!confirm('Удалить эту сохранённую сводку без восстановления?'))return;
+      await api('/v5/episode/delete',{id:x.id,confirmed:true});
+      await v5Episodes();
+    }
+  }]));
+}
 async function v5Causal(){
   const d=await api('/v5/causal');
   renderItems('v5-causal-links',d.items,x=>textItem(
@@ -367,7 +378,7 @@ function setupV5(){
     if(!confirm('Сохранить эту дословную сводку диалога локально?'))return;
     try{
       await api('/v5/episode/save',{session_id:state.session,confirmed:true});
-      state.episodePreview=false;notify('Сводка сохранена с источником');
+      state.episodePreview=false;await v5Episodes();notify('Сводка сохранена с источником');
     }catch(e){notify(e.message,true);}
   });
   bindForm('v5-evidence-form',async()=>{
@@ -525,7 +536,7 @@ async function start(){
     byId('status-dot').classList.toggle('online',health.configured);
     notify(health.configured?'Cloud.ru подключён':'Cloud.ru не настроен · см. README');
     await loadSessions();
-    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary(),v4Map(),v4Links(),v4Assessments(),v4Strategies(),v5Permissions(),v5Causal(),v5Growth(),v5Plan(),v5Transfers()]);
+    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary(),v4Map(),v4Links(),v4Assessments(),v4Strategies(),v5Permissions(),v5Episodes(),v5Causal(),v5Growth(),v5Plan(),v5Transfers()]);
   }catch(e){notify(e.message,true);}
 }
 start();
