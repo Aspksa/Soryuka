@@ -87,6 +87,17 @@ class CognitiveTests(unittest.TestCase):
         self.assertEqual(saved["source_messages"],2)
         self.assertEqual(len(CognitiveV5(SoulStore(self.store.path)).episodes()),1)
 
+    def test_episode_can_be_deleted_without_private_audit_copy(self):
+        sid=self.store.ensure_session()
+        self.store.save_exchange(sid,"Секретная фраза о прогулке","Поняла","greeting")
+        episode=self.cog.save_episode(sid,True)
+        with self.assertRaises(StoreError):
+            self.cog.delete_episode(episode["id"],False)
+        self.assertTrue(self.cog.delete_episode(episode["id"],True))
+        self.assertEqual(self.cog.episodes(),[])
+        audit=json.dumps(self.store.audit_log(),ensure_ascii=False)
+        self.assertNotIn("Секретная фраза о прогулке",audit)
+
     def test_episode_deleting_session_removes_digest(self):
         sid=self.store.ensure_session()
         self.store.save_exchange(sid,"Урок","Ответ","learning")
