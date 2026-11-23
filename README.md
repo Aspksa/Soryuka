@@ -81,7 +81,7 @@ START-SORYUKA.bat → launch.py
 
 Движок визуализации адаптирован из открытого проекта [gnufoo/agent-mirror](https://github.com/gnufoo/agent-mirror). Это техническое указание авторства, **не название ассистента, раздела или системы памяти**. Условия использования и атрибуция сохранены в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Ранний Canvas 2D-прототип (`ui/mirror.js`, `ui/mirror.css`) остался в исходниках как архив; на главной не используется. Актуальное описание — в [документации 3D-карты](docs/AGENT_MIRROR_ORIGINAL_PORT.md). История 2D-прототипа хранится в [архивных заметках](docs/MEMORY_MIRROR.md).
+Ранний Canvas 2D-прототип удалён из действующих файлов и маршрутов после проверки, что WebGL полностью заменил его. История предыдущей версии остаётся в Git. Актуальное описание — в [документации 3D-карты](docs/AGENT_MIRROR_ORIGINAL_PORT.md). История 2D-прототипа хранится в [архивных заметках](docs/MEMORY_MIRROR.md).
 
 ## Новое в Soryuka 4.0 (выбранные 25 пунктов)
 
@@ -104,7 +104,8 @@ python -m unittest discover -s tests -p "test_*.py" -v
 python character/living_personality_runtime.py
 node --check ui/server.mjs
 node --check ui/app.js
-node --check ui/mirror.js
+node --check ui/mirror-boot.js
+node --check ui/graph-logic.js
 node --check ui/mirror-original.js
 ```
 
