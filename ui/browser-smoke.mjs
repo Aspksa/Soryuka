@@ -67,6 +67,16 @@ try{
   });
   const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
   const uncaught=[];
+  const graphicsTraffic=[];
+  page.on('requestfinished',async request=>{
+    if(!request.url().endsWith('/api/mirror/settings'))return;
+    try{
+      const response=await request.response();
+      const payload=await response.json();
+      graphicsTraffic.push({method:request.method(),requestBody:request.postData(),
+        status:response.status(),settings:payload.settings,source:payload.source});
+    }catch(error){graphicsTraffic.push({error:String(error)});}
+  });
   page.on('pageerror',error=>uncaught.push(error.message));
   page.on('console',message=>{
     if(message.type()==='error')uncaught.push('Console: '+message.text());
@@ -114,7 +124,8 @@ try{
     status:document.getElementById('graphics-save-status')?.textContent,
     errors:document.getElementById('soryuka-engine-message')?.textContent
   }));
-  console.log('WebGL restored graphics after reload:',JSON.stringify(restored));
+  console.log('WebGL restored graphics after reload:',JSON.stringify(restored),
+    'settings traffic:',JSON.stringify(graphicsTraffic));
   await page.waitForFunction(()=>Math.abs(window.__soryukaDiagnostics?.().fogDensity-0.0012)<1e-8,
     null,{timeout:10000});
   await page.locator('#graphics-toggle').click();
