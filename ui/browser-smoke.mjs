@@ -105,14 +105,19 @@ try{
   assert.ok(await page.locator('#node-detail').isHidden());
 
   await page.locator('#graphics-toggle').click();
+  const settingCommitted=page.waitForResponse(response=>
+    response.url().endsWith('/api/mirror/settings')&&
+    response.request().method()==='POST'&&response.status()===200,
+    {timeout:15000});
   await page.locator('#graphics-fog').evaluate(input=>{
     input.value='0.00120';
     input.dispatchEvent(new Event('input',{bubbles:true}));
   });
-  await page.waitForFunction(async()=>{
-    const result=await fetch('/api/mirror/settings').then(r=>r.json());
-    return Math.abs(result.settings?.fog-0.0012)<1e-8;
-  },null,{timeout:10000});
+  await settingCommitted;
+  const savedSettings=await page.evaluate(async()=>
+    fetch('/api/mirror/settings',{cache:'no-store'}).then(r=>r.json()));
+  assert.equal(savedSettings.source,'sqlite','Fog must be persisted in existing SQLite');
+  assert.ok(Math.abs(savedSettings.settings.fog-0.0012)<1e-8);
   assert.ok(Math.abs((await page.evaluate(()=>window.__soryukaDiagnostics())).fogDensity-0.0012)<1e-8);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__soryukaDiagnostics?.().totalNodes>=7,
@@ -129,11 +134,16 @@ try{
   await page.waitForFunction(()=>Math.abs(window.__soryukaDiagnostics?.().fogDensity-0.0012)<1e-8,
     null,{timeout:10000});
   await page.locator('#graphics-toggle').click();
+  const resetCommitted=page.waitForResponse(response=>
+    response.url().endsWith('/api/mirror/settings')&&
+    response.request().method()==='POST'&&response.status()===200,
+    {timeout:15000});
   await page.locator('#graphics-reset').click();
-  await page.waitForFunction(async()=>{
-    const result=await fetch('/api/mirror/settings').then(r=>r.json());
-    return Math.abs(result.settings?.fog-0.0008)<1e-8;
-  },null,{timeout:10000});
+  await resetCommitted;
+  const resetSaved=await page.evaluate(async()=>
+    fetch('/api/mirror/settings',{cache:'no-store'}).then(r=>r.json()));
+  assert.equal(resetSaved.source,'sqlite');
+  assert.ok(Math.abs(resetSaved.settings.fog-0.0008)<1e-8);
   await mkdir(artifactDir,{recursive:true});
   await page.screenshot({path:join(artifactDir,'soryuka-webgl-'+os+'.png'),fullPage:true});
   assert.deepEqual(uncaught,[],'No uncaught browser errors');
