@@ -273,6 +273,60 @@ class CognitiveV5:
         scores.sort(key=lambda x:x["score"],reverse=True)
         return scores[:max(1,min(int(limit),20))]
 
+    def prune_orphan_embeddings(self)->int:
+        """Drop obsolete vectors no longer referenced by any live memory."""
+        with self.store.db() as c:
+            deleted=c.execute("""DELETE FROM embedding_cache WHERE NOT EXISTS
+                (SELECT 1 FROM memory_embeddings e WHERE
+                 e.model=embedding_cache.model AND e.text_sha256=embedding_cache.text_sha256)
+                AND NOT EXISTS (SELECT 1 FROM memories m WHERE
+                 hex(m.body)=embedding_cache.text_sha256)""")
+            # The cache includes query vectors. Pruning them is safe; future queries re-embed.
+        return deleted.rowcount
+
+    def hybrid_search(self,query:str,limit:int=8,use_cloud:bool=False,
+                      confirmed:bool=False)->dict:
+        """Blend lexical matches with cached embeddings; no network by default."""
+        query=clean(query,250)
+        limit=max(1,min(int(limit),12))
+        lexical=[r for r in self.cap.memory_index(query,limit) if r.get("provenance")=="owner_confirmed"]
+        merged={}
+        for r in lexical:
+            merged[r["id"]]={"id":r["id"],"kind":r["kind"],"body":r["body"],
+                             "lexical_score":r["score"],"vector_score":None,
+                             "score":round(.65*r["score"],4),"source":"approved_local"}
+        vector_rows=[]
+        if use_cloud:
+            vector_rows=self.vector_search(query,confirmed,limit)
+        else:
+            with self.store.db() as c:
+                v=self._cached_vector(c,self.embed.model,query)
+                if v is not None:
+                    rows=c.execute("""SELECT m.id,m.kind,m.body,e.text_sha256,cache.vector_json
+                        FROM memory_embeddings e
+                        JOIN memories m ON m.id=e.memory_id
+                        LEFT JOIN memory_provenance p ON p.memory_id=m.id
+                        JOIN embedding_cache cache ON cache.model=e.model
+                            AND cache.text_sha256=e.text_sha256
+                        WHERE e.model=? AND COALESCE(p.status,'owner_confirmed')='owner_confirmed'
+                        LIMIT 300""",(self.embed.model,)).fetchall()
+                    for r in rows:
+                        if _hash(r["body"])!=r["text_sha256"]:
+                            continue
+                        score=_cosine(v,json.loads(r["vector_json"]))
+                        if score>0:
+                            vector_rows.append({"id":r["id"],"kind":r["kind"],
+                                                "body":r["body"],"score":round(score,4)})
+        for row in vector_rows:
+            item=merged.setdefault(row["id"],{"id":row["id"],"kind":row["kind"],
+                "body":row["body"],"lexical_score":0.0,"vector_score":None,
+                "score":0.0,"source":"approved_local"})
+            item["vector_score"]=row["score"]
+            item["score"]=round(.65*item["lexical_score"]+.35*row["score"],4)
+        items=sorted(merged.values(),key=lambda x:(x["score"],x["id"]),reverse=True)[:limit]
+        return {"items":items,"method":"local_hybrid_cached_vector_plus_tokens",
+                "cloud_called":bool(use_cloud),"requires_owner_review":True}
+
     def evidence_search(self,query:str,limit:int=8,max_hops:int=2)->dict:
         """Offline lexical retrieval plus bounded traversal of approved memory links."""
         query=clean(query,250)
