@@ -12,11 +12,13 @@ try:
     from .soul_store import SoulStore,StoreError
     from .growth_v5 import BackgroundLearningLoop
     from .mirror_graph import build_graph, activity
+    from .mirror_settings import read_graphics, write_graphics
 except ImportError:
     from soul_engine import SoryukaEngine,CloudConfigError,CloudRequestError
     from soul_store import SoulStore,StoreError
     from growth_v5 import BackgroundLearningLoop
     from mirror_graph import build_graph, activity
+    from mirror_settings import read_graphics, write_graphics
 
 MAX_BODY=32768
 
@@ -101,6 +103,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return engine.profile()
         if path=="/api/mirror/graph":
             return build_graph(store)
+        if path=="/api/mirror/settings":
+            return read_graphics(store)
         if path=="/api/mirror/activity":
             cursor_a=params.get("audit_after",["0"])[0]
             cursor_m=params.get("message_after",["0"])[0]
@@ -181,6 +185,8 @@ class AppHandler(BaseHTTPRequestHandler):
         engine=self.server.engine
         if path=="/api/chat":
             return engine.chat(body.get("message",""),body.get("session_id"),body.get("intent"))
+        if path=="/api/mirror/settings":
+            return write_graphics(store,body.get("settings"))
         if path=="/api/session":
             return {"session_id":store.ensure_session()}
         if path=="/api/session/delete":
