@@ -145,6 +145,34 @@ class CognitiveTests(unittest.TestCase):
         self.cog.vector_search("чай",True)
         self.assertEqual(len(self.embed.calls),first_calls+1)
 
+    def test_offline_hybrid_uses_cached_vectors_only(self):
+        m=self.mem("Я люблю чай")
+        self.cog.set_permission("cloud_embeddings",True,True)
+        self.cog.index_memories(True)
+        before=len(self.embed.calls)
+        local=self.cog.hybrid_search("чай")
+        self.assertFalse(local["cloud_called"])
+        self.assertEqual(len(self.embed.calls),before)
+        self.assertEqual(local["items"][0]["id"],m["id"])
+        hybrid=self.cog.hybrid_search("чай",use_cloud=True,confirmed=True)
+        self.assertTrue(hybrid["cloud_called"])
+        self.assertTrue(hybrid["items"])
+        calls=len(self.embed.calls)
+        again=self.cog.hybrid_search("чай")
+        self.assertFalse(again["cloud_called"])
+        self.assertEqual(len(self.embed.calls),calls)
+        self.assertIsNotNone(again["items"][0]["vector_score"])
+
+    def test_deleted_memory_does_not_leave_orphan_vector(self):
+        m=self.mem("Я люблю зеленый чай")
+        self.cog.set_permission("cloud_embeddings",True,True)
+        self.cog.index_memories(True)
+        self.store.delete_memory(m["id"])
+        self.assertGreaterEqual(self.cog.prune_orphan_embeddings(),1)
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM memory_embeddings").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM embedding_cache").fetchone()[0],0)
+
     def test_embedding_disputed_memory_is_filtered(self):
         m=self.mem("Люблю чай")
         self.cog.set_permission("cloud_embeddings",True,True)
