@@ -56,3 +56,37 @@ jobs:
           node --check ui/graphics-settings.js
       - name: Test graph logic and graphics settings
         run: node --test ui/graphics-settings.test.mjs ui/graph-logic.test.mjs
+
+  browser-smoke:
+    name: WebGL browser smoke — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install dev-only browser test dependencies
+        run: npm install --prefix ui --include=dev --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium with Linux OS dependencies
+        if: runner.os == 'Linux'
+        run: npx --prefix ui playwright install --with-deps chromium
+      - name: Install Chromium for Windows
+        if: runner.os == 'Windows'
+        run: npx --prefix ui playwright install chromium
+      - name: Real WebGL render, controls, SQLite persistence and failure fallback
+        run: node ui/browser-smoke.mjs
+      - name: Upload visual WebGL screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soryuka-webgl-${{ matrix.os }}
+          path: artifacts/*.png
+          if-no-files-found: ignore
