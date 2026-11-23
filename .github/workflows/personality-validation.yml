@@ -52,6 +52,12 @@ jobs:
           node --check ui/app.js
           node --check ui/mirror.js
           node --check ui/mirror-original.js
+          node --check ui/graph-v2.js
+          node --check ui/mirror-bootstrap.js
           node --check ui/graphics-settings.js
       - name: Test graphics settings persistence and validation
         run: node --test ui/graphics-settings.test.mjs
+      - name: Test Soryuka 3D graph physics and event contracts
+        run: node --test ui/graph-v2.test.mjs
+      - name: Test WebGL black-screen recovery diagnostics
+        run: node --test ui/mirror-bootstrap.test.mjs

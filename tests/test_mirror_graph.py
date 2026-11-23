@@ -174,6 +174,18 @@ class MirrorUiTests(unittest.TestCase):
         self.assertIn('id="canvas-container"',html)
         self.assertIn('id="feedList"',html)
         self.assertIn('/mirror-original.js',html)
+        for required in ('soryuka-engine-message','render-status','node-detail',
+                         'detail-related','answer-route','route-source-list',
+                         '/mirror-bootstrap.js'):
+            self.assertIn(required,html)
+        self.assertIn("from './graph-v2.js'",js)
+        self.assertIn("showAnswerRoute",js)
+        self.assertIn("showVerifiedLinkTrail",js)
+        self.assertIn("applyAdaptiveLOD",js)
+        self.assertIn("qualityFromFps",js)
+        self.assertIn("seedStablePositions",js)
+        self.assertIn("collisionRadius",js)
+        self.assertIn("openNodeCard",js)
         for key in ('fog','light','speed'):
             self.assertIn('id="graphics-'+key+'"',html)
             self.assertIn('id="graphics-'+key+'-value"',html)

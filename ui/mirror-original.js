@@ -8,6 +8,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {graphFingerprint,seedStablePositions,relatedNodes,verifiedEventTargets,
+  qualityFromFps,collisionRadius} from './graph-v2.js';
 import {
   GRAPHICS_DEFAULTS, GRAPHICS_STORAGE_KEY, normalizeGraphics,
   readGraphics, saveGraphics, resetGraphics
@@ -23,6 +25,13 @@ let graphics=readGraphics(graphicsStorage);
 let animationClock=0;
 let previousFrame=0;
 let physicsProgress=0;
+let qualityLevel='high';
+let frameCounter=0;
+let performanceWindow=performance.now();
+let renderFps=60;
+let lastQualityUpdate=0;
+let renderReady=false;
+let renderDisabled=false;
 
 /** Adapt Soryuka's actual SQLite graph to the Soryuka 3D renderer.
  * No fabricated memories or private Cloud.ru keys in browser code.
@@ -96,6 +105,12 @@ let edgeMesh, edgeGeo;
 let edgePositions, edgeColors, edgeBaseColors, edgeColorAttr;
 
 const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+const sphereGeoLow = new THREE.SphereGeometry(1, 8, 6);
+let graphSignature='';
+let selectedNodeId=null;
+let newNodeCount=0;
+let activeRouteIds=new Set();
+let activeGrowthIds=new Set();
 
 // ═══════════════════════════════════════
 // Scene Setup
@@ -107,6 +122,16 @@ renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setClearColor(0x0a0a0f);
 container.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost',event=>{
+  event.preventDefault();
+  renderDisabled=true;
+  window.dispatchEvent(new CustomEvent('soryuka:renderer-failed',{
+    detail:'Видеокарта потеряла контекст WebGL. Проверь драйвер; при восстановлении страница перезагрузится.'
+  }));
+});
+renderer.domElement.addEventListener('webglcontextrestored',()=>{
+  window.location.reload();
+});
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x0a0a0f, graphics.fog);
@@ -268,6 +293,43 @@ function createGlowTexture() {
 }
 const glowTexture = createGlowTexture();
 
+// Decorative spatial mist. These are atmospheric particles, never memory events.
+// Three.js FogExp2 still defines the real scene depth fog controlled by the slider.
+const mistLayers=[];
+for(let layer=0;layer<3;layer++){
+  const count=[180,120,75][layer];
+  const positions=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    const angle=i*2.39996323+layer;
+    const radial=90+Math.sqrt(i/count)*(340+layer*140);
+    positions[i*3]=Math.cos(angle)*radial;
+    positions[i*3+1]=Math.sin(angle*0.8)*(55+layer*50);
+    positions[i*3+2]=Math.sin(angle)*radial;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  const mat=new THREE.PointsMaterial({
+    map:glowTexture,transparent:true,opacity:0.055+layer*0.018,
+    color:[0x49668f,0x7f89b9,0x88715f][layer],
+    size:16+layer*12,sizeAttenuation:true,depthWrite:false,
+    blending:THREE.AdditiveBlending
+  });
+  const points=new THREE.Points(geo,mat);
+  points.rotation.y=layer*0.8;
+  scene.add(points);
+  mistLayers.push(points);
+}
+function updateMist(){
+  const amount=graphics.fog/0.003;
+  for(let i=0;i<mistLayers.length;i++){
+    const cloud=mistLayers[i];
+    cloud.visible=amount>0.02&&(qualityLevel!=='low'||i===0);
+    cloud.material.opacity=(0.05+i*0.025)*amount;
+    cloud.rotation.y+=0.000035*(i+1)*graphics.speed;
+  }
+}
+
+
 function makeLabel(text, hexColor) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -320,7 +382,7 @@ function getHeatColor(count) {
 // Animation System
 // ═══════════════════════════════════════
 
-function addAnimation(durationMs, updateFn, onCompleteFn, tag) {
+function addAnimation(durationMs, updateFn, onCompleteFn, tag, cancelOnClear=false) {
   if (tag) {
     for (let i = activeAnimations.length - 1; i >= 0; i--) {
       if (activeAnimations[i].tag === tag) {
@@ -331,7 +393,8 @@ function addAnimation(durationMs, updateFn, onCompleteFn, tag) {
   }
   activeAnimations.push({
     startTime: animationClock, duration: durationMs,
-    update: updateFn, onComplete: onCompleteFn || null, tag: tag || null
+    update: updateFn, onComplete: onCompleteFn || null, tag: tag || null,
+    cancelOnClear
   });
 }
 
@@ -364,6 +427,11 @@ function findNodeById(targetPath) {
 
 function clearGraph() {
   if (simulation) simulation.stop();
+  // Complete temporary lights and trails before removing their meshes.
+  for(const animation of activeAnimations.splice(0)){
+    // Cleanup completed materials/lights but never spawn delayed effects when cleared.
+    if(!animation.cancelOnClear && animation.onComplete)animation.onComplete();
+  }
   if (edgeMesh) { scene.remove(edgeMesh); edgeGeo.dispose(); edgeMesh.material.dispose(); }
   for (const info of Object.values(nodeMeshes)) {
     scene.remove(info.mesh);
@@ -373,14 +441,31 @@ function clearGraph() {
   }
   nodeMeshes = {}; nodeMap = {}; meshToNodeId.clear();
   raycastTargets.length = 0; nodeEdgeLookup = {};
-  activeAnimations.length = 0;
   nodesData = null; edgesData = null;
   edgeMesh = null; edgeGeo = null;
 }
 
 function buildGraph(data) {
+  const signature=graphFingerprint(data);
+  const {nodes,edges,colors}=data;
+  if(signature===graphSignature && nodesData){
+    // Metadata can change without topology changing. Keep mesh, particle effects,
+    // camera, force layout, selected card and active animations intact.
+    const fresh=new Map(nodes.map(n=>[n.id,n]));
+    for(const node of nodesData){
+      const next=fresh.get(node.id);
+      if(next){node.label=next.label;node.status=next.status;
+        node.description=next.description;node.created_at=next.created_at;}
+    }
+    if(selectedNodeId)openNodeCard(selectedNodeId);
+    return;
+  }
+  const oldNodes=nodesData;
+  const born=seedStablePositions(oldNodes,nodes,edges);
   clearGraph();
-  const { nodes, edges, colors } = data;
+  graphSignature=signature;
+  newNodeCount+=born.length;
+  activeGrowthIds=new Set(born.slice(0,6));
   nodesData = nodes; edgesData = edges; colorsData = colors;
 
   nodeMap = {};
@@ -397,9 +482,10 @@ function buildGraph(data) {
       .distance(d => d.type === 'structural' ? 80 : d.type === 'contains' ? 50 : 120)
       .strength(d => d.type === 'structural' ? 0.8 : d.type === 'contains' ? 0.3 : 0.15))
     .force('charge', d3.forceManyBody().strength(d =>
-      d.type === 'category' ? -400 : d.type === 'core' ? -300 : -80))
+      d.type === 'category' ? -480 : d.type === 'core' ? -380 : -110))
     .force('center', d3.forceCenter(0, 0, 0))
-    .force('collision', d3.forceCollide().radius(d => d.size * NODE_SCALE + 2))
+    .force('collision', d3.forceCollide().radius(d=>collisionRadius(d,NODE_SCALE))
+      .strength(0.95).iterations(2))
     .force('x', d3.forceX(0).strength(0.03))
     .force('y', d3.forceY(0).strength(0.03))
     .force('z', d3.forceZ(0).strength(0.03));
@@ -459,7 +545,8 @@ function buildGraph(data) {
       metalness: 0.2, roughness: 0.7,
     });
 
-    const mesh = new THREE.Mesh(sphereGeo, mat);
+    const mesh = new THREE.Mesh(node.type==='file'&&qualityLevel!=='high'?
+      sphereGeoLow:sphereGeo, mat);
     const r = node.size * NODE_SCALE;
     mesh.scale.setScalar(r);
     mesh.userData.baseEmissiveInt = emissiveInt;
@@ -493,6 +580,31 @@ function buildGraph(data) {
 
   // --- Legend ---
   buildLegend(colors, nodes);
+  if(selectedNodeId){
+    if(nodeMap[selectedNodeId])openNodeCard(selectedNodeId);
+    else closeNodeCard();
+  }
+  if(renderReady)applyAdaptiveLOD();
+  if(born.length){
+    // Only real new SQLite records generate a "birth" visual, never placeholder nodes.
+    addAnimation(2100,()=>{},()=>{
+      activeGrowthIds.clear();
+      if(renderReady)applyAdaptiveLOD();
+    },null,true);
+    const limited=born.slice(0,6);
+    addAnimation(500,()=>{},()=>{
+      for(const id of limited){
+        const node=nodeMap[id];
+        if(!node)continue;
+        pulseNode(id,'#c8a36d',1400);
+        const edge=edgesData.find(e=>e.source.id===id||e.target.id===id);
+        if(edge){
+          const parent=edge.source.id===id?edge.target:edge.source;
+          if(parent && nodeMap[parent.id])animateParticleTrail(parent,node,'#c8a36d',()=>{});
+        }
+      }
+    },null,true);
+  }
 }
 
 function buildLegend(colors, nodes) {
@@ -580,91 +692,167 @@ function updatePositions() {
 const tooltip = document.getElementById('tooltip');
 
 function getConnectedIds(nodeId) {
-  const set = new Set();
-  for (const { idx } of (nodeEdgeLookup[nodeId] || [])) {
-    const e = edgesData[idx];
-    if (e.source.id === nodeId) set.add(e.target.id);
-    else set.add(e.source.id);
+  const set=new Set();
+  for(const {idx} of (nodeEdgeLookup[nodeId]||[])){
+    const edge=edgesData[idx];
+    if(edge.source.id===nodeId)set.add(edge.target.id);
+    else if(edge.target.id===nodeId)set.add(edge.source.id);
   }
   return set;
 }
 
-function hoverNode(nodeId, event) {
-  hoveredNodeId = nodeId;
-  const node = nodeMap[nodeId];
-  const info = nodeMeshes[nodeId];
-  if (!node || !info) return;
-  const count = accessCounts[nodeId] || 0;
-  tooltip.style.display = 'block';
-  tooltip.innerHTML = `
-    <div class="tt-type">${escapeHtml(NODE_TYPE_TITLES[node.type]||node.type)}</div>
-    <div class="tt-label">${escapeHtml(node.label)}</div>
-    <div class="tt-cat" style="color:${colorsData[node.category]||'#888'}">${escapeHtml(CATEGORY_TITLES[node.category]||node.category)}</div>
-    ${count ? `<div class="tt-access">Обращений к узлу: ${count}</div>` : ''}
-  `;
-  tooltip.style.left = (event.clientX + 15) + 'px';
-  tooltip.style.top = (event.clientY - 10) + 'px';
-
-  const connected = getConnectedIds(nodeId);
-  for (const [id, inf] of Object.entries(nodeMeshes)) {
-    if (id === nodeId || connected.has(id)) {
-      inf.mesh.material.color.copy(inf.baseColor);
-    } else {
-      inf.mesh.material.color.copy(inf.baseColor).multiplyScalar(0.08);
-    }
-  }
-  const connEdges = new Set((nodeEdgeLookup[nodeId] || []).map(e => e.idx));
-  for (let i = 0; i < edgesData.length; i++) {
-    const j = i * 6;
-    const mult = connEdges.has(i) ? 3.5 : 0.08;
-    edgeColors[j]   = edgeBaseColors[j]   * mult;
-    edgeColors[j+1] = edgeBaseColors[j+1] * mult;
-    edgeColors[j+2] = edgeBaseColors[j+2] * mult;
-    edgeColors[j+3] = edgeBaseColors[j+3] * mult;
-    edgeColors[j+4] = edgeBaseColors[j+4] * mult;
-    edgeColors[j+5] = edgeBaseColors[j+5] * mult;
-  }
-  edgeColorAttr.needsUpdate = true;
-}
-
-function unhover() {
-  if (!hoveredNodeId) return;
-  hoveredNodeId = null;
-  tooltip.style.display = 'none';
-  for (const info of Object.values(nodeMeshes)) {
+function applyFocus(nodeId){
+  const connected=nodeId?getConnectedIds(nodeId):null;
+  for(const [id,info] of Object.entries(nodeMeshes)){
     info.mesh.material.color.copy(info.baseColor);
+    if(connected&&id!==nodeId&&!connected.has(id))
+      info.mesh.material.color.multiplyScalar(0.12);
   }
-  edgeColors.set(edgeBaseColors);
-  edgeColorAttr.needsUpdate = true;
+  if(!edgeColorAttr||!edgeBaseColors)return;
+  const highlighted=new Set(nodeId?(nodeEdgeLookup[nodeId]||[]).map(e=>e.idx):[]);
+  for(let i=0;i<edgesData.length;i++){
+    const factor=!nodeId?1:highlighted.has(i)?2.4:0.13;
+    const j=i*6;
+    for(let k=0;k<6;k++)edgeColors[j+k]=edgeBaseColors[j+k]*factor;
+  }
+  edgeColorAttr.needsUpdate=true;
 }
 
-container.addEventListener('mousemove', (event) => {
-  const rect = renderer.domElement.getBoundingClientRect();
-  mouseNDC.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  mouseNDC.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+function closeNodeCard(){
+  selectedNodeId=null;
+  document.getElementById('node-detail').hidden=true;
+  applyFocus(hoveredNodeId);
+  if(renderReady)applyAdaptiveLOD();
+}
 
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(raycastTargets);
-  if (hits.length > 0) {
-    const nid = meshToNodeId.get(hits[0].object);
-    if (nid && nid !== hoveredNodeId) { unhover(); hoverNode(nid, event); }
-    else if (nid) {
-      tooltip.style.left = (event.clientX + 15) + 'px';
-      tooltip.style.top = (event.clientY - 10) + 'px';
-    }
-  } else if (hoveredNodeId) {
-    unhover();
+function focusCameraOn(node){
+  const fromTarget=controls.target.clone();
+  const target=new THREE.Vector3(node.x||0,node.y||0,node.z||0);
+  const fromCamera=camera.position.clone();
+  const offset=fromCamera.clone().sub(fromTarget);
+  if(offset.length()<90)offset.set(160,110,220);
+  const goalCamera=target.clone().add(offset);
+  addAnimation(580,t=>{
+    const smooth=1-Math.pow(1-t,3);
+    controls.target.lerpVectors(fromTarget,target,smooth);
+    camera.position.lerpVectors(fromCamera,goalCamera,smooth);
+  },null,'focus-camera');
+}
+
+function openNodeCard(id){
+  const node=nodeMap[id];
+  if(!node){closeNodeCard();return;}
+  selectedNodeId=id;
+  const panel=document.getElementById('node-detail');
+  document.getElementById('detail-title').textContent=node.label||'Узел Сорюки';
+  document.getElementById('detail-status').textContent=[
+    CATEGORY_TITLES[node.category]||node.category,
+    NODE_TYPE_TITLES[node.type]||node.kind||'Запись',
+    node.status||'',
+    node.created_at||''
+  ].filter(Boolean).join(' · ');
+  document.getElementById('detail-summary').textContent=
+    node.description||'Дополнительное описание в базе данных отсутствует.';
+  document.getElementById('detail-origin').textContent=
+    'Источник: '+(node.id.startsWith('canon:')?'Файлы канона':
+      'Локальная SQLite')+' · '+node.id;
+  const list=document.getElementById('detail-related');
+  list.replaceChildren();
+  const related=relatedNodes(id,edgesData,nodeMap,14);
+  if(!related.length){
+    const empty=document.createElement('li');
+    empty.textContent='Связанные узлы в текущем графе отсутствуют.';
+    list.appendChild(empty);
   }
+  for(const rel of related){
+    const li=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=rel.name;
+    button.title='Связь из SQLite: '+rel.relation;
+    button.addEventListener('click',()=>{
+      openNodeCard(rel.id);
+      const adjacent=nodeMap[rel.id];
+      if(adjacent)focusCameraOn(adjacent);
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  panel.hidden=false;
+  applyFocus(id);
+  if(renderReady)applyAdaptiveLOD();
+}
+
+document.getElementById('node-detail-close').addEventListener('click',closeNodeCard);
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'&&!document.getElementById('node-detail').hidden)
+    closeNodeCard();
 });
 
-container.addEventListener('click', (event) => {
-  if (!debugMode) return;
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(raycastTargets);
-  if (hits.length > 0) {
-    const nid = meshToNodeId.get(hits[0].object);
-    if (nid) handleDebugClick(nodeMap[nid]);
+function hoverNode(nodeId,event){
+  hoveredNodeId=nodeId;
+  const node=nodeMap[nodeId];
+  const info=nodeMeshes[nodeId];
+  if(!node||!info)return;
+  const count=accessCounts[nodeId]||0;
+  tooltip.style.display='block';
+  tooltip.innerHTML=`
+    <div class="tt-type">${escapeHtml(NODE_TYPE_TITLES[node.type]||node.type)}</div>
+    <div class="tt-label">${escapeHtml(node.label)}</div>
+    <div class="tt-cat">${escapeHtml(CATEGORY_TITLES[node.category]||node.category)}</div>
+    ${count?`<div class="tt-access">Обращений к узлу: ${count}</div>`:''}
+  `;
+  tooltip.style.left=(event.clientX+15)+'px';
+  tooltip.style.top=(event.clientY-10)+'px';
+  applyFocus(nodeId);
+}
+
+function unhover(){
+  hoveredNodeId=null;
+  tooltip.style.display='none';
+  applyFocus(selectedNodeId);
+}
+
+let lastRaycast=0;
+let clickOrigin=null;
+container.addEventListener('pointerdown',event=>{
+  if(event.button===0)clickOrigin={x:event.clientX,y:event.clientY};
+});
+container.addEventListener('pointermove',event=>{
+  if(event.pointerType==='touch')return;
+  if(performance.now()-lastRaycast<45)return; // Bounded GPU/CPU raycasts.
+  lastRaycast=performance.now();
+  const rect=renderer.domElement.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  mouseNDC.x=((event.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(raycastTargets,false);
+  const nodeId=hits.length?meshToNodeId.get(hits[0].object):null;
+  if(nodeId&&nodeId!==hoveredNodeId){unhover();hoverNode(nodeId,event);}
+  else if(nodeId){
+    tooltip.style.left=(event.clientX+15)+'px';
+    tooltip.style.top=(event.clientY-10)+'px';
+  }else if(hoveredNodeId)unhover();
+});
+container.addEventListener('pointerleave',()=>{clickOrigin=null;unhover();});
+container.addEventListener('click',event=>{
+  if(event.button!==0)return;
+  if(clickOrigin&&Math.hypot(event.clientX-clickOrigin.x,event.clientY-clickOrigin.y)>7){
+    clickOrigin=null;return; // Orbit drag is not a selection.
   }
+  clickOrigin=null;
+  const rect=renderer.domElement.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  mouseNDC.x=((event.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y=-((event.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(raycastTargets,false);
+  if(!hits.length){if(!debugMode)closeNodeCard();return;}
+  const nodeId=meshToNodeId.get(hits[0].object);
+  if(!nodeId)return;
+  if(debugMode)handleDebugClick(nodeMap[nodeId]);
+  else openNodeCard(nodeId);
 });
 
 // ═══════════════════════════════════════
@@ -781,7 +969,9 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
   mid2.x += (Math.random()-0.5)*off; mid2.y += (Math.random()-0.5)*off; mid2.z += (Math.random()-0.5)*off;
   const curve = new THREE.CatmullRomCurve3([from, mid1, mid2, to]);
 
-  const numP = 8, stagger = 80, travelMs = 1200;
+  // Scale particle counts to FPS tier; keep event rendering bounded.
+  const numP=qualityLevel==='low'?2:qualityLevel==='medium'?4:6;
+  const stagger=85,travelMs=1100;
 
   for (let i = 0; i < numP; i++) {
     const spawnParticle=() => {
@@ -803,7 +993,7 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
       });
     };
     if(i===0)spawnParticle();
-    else addAnimation(i*stagger,()=>{},spawnParticle);
+    else addAnimation(i*stagger,()=>{},spawnParticle,null,true);
   }
 
   // Fading curved path line
@@ -818,7 +1008,7 @@ function animateParticleTrail(fromNode, toNode, colorHex, onArrive) {
     if (t > 0.5) pathMat.opacity = 0.3 * (1 - (t - 0.5) / 0.5);
   }, () => { scene.remove(pathLine); pathGeo.dispose(); pathMat.dispose(); });
 
-  addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive);
+  addAnimation(travelMs + (numP - 1) * stagger,()=>{},onArrive,null,true);
 }
 
 // ═══════════════════════════════════════
@@ -873,6 +1063,67 @@ function addFeedItem(event) {
 }
 
 // ═══════════════════════════════════════
+// Real answer context and verified SQLite connection events
+// ═══════════════════════════════════════
+function showAnswerRoute(event){
+  // No synthetic "thinking steps": these IDs were actually placed into the
+  // request's local prompt context or audited at successful response save.
+  if(event.context_kind!=='selected_for_prompt'||
+     !['request_started','response_saved'].includes(event.phase))return;
+  const known=new Set(Object.keys(nodeMap));
+  const ids=verifiedEventTargets(event,known,8);
+  activeRouteIds=new Set(ids);
+  if(renderReady)applyAdaptiveLOD(); // Keep real prompt sources visible under low-FPS LOD.
+  const panel=document.getElementById('answer-route');
+  const phase=document.getElementById('route-phase');
+  const list=document.getElementById('route-source-list');
+  const finished=event.phase==='response_saved';
+  panel.hidden=false;
+  phase.textContent=finished
+    ?'Ответ сохранён. Подсвечены записи, предоставленные в контексте запроса, а не скрытые мысли модели.'
+    :'Запрос выполняется. Это записи, выбранные Python для контекста ответа.';
+  list.replaceChildren();
+  if(!ids.length){
+    const li=document.createElement('li');
+    li.textContent='В отображаемом графе нет записей, выбранных для контекста.';
+    list.appendChild(li);
+  }
+  for(const id of ids){
+    const node=nodeMap[id];
+    const li=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=node.label||id;
+    button.title='Перейти к реальному источнику';
+    button.addEventListener('click',()=>{openNodeCard(id);focusCameraOn(node);});
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  const origin=nodeMap['core:soryuka'];
+  if(origin){
+    pulseNode(origin.id,finished?'#54d8bc':'#e1bb78',1400);
+    for(const id of ids.slice(0,qualityLevel==='low'?1:3)){
+      const node=nodeMap[id];
+      if(!node)continue;
+      if(finished)animateParticleTrail(node,origin,'#54d8bc',()=>pulseNode(origin.id,'#54d8bc',750));
+      else animateParticleTrail(origin,node,'#e1bb78',()=>pulseNode(id,'#e1bb78',750));
+    }
+  }
+}
+function showVerifiedLinkTrail(event){
+  if(event.type!=='link')return;
+  const ids=verifiedEventTargets(event,new Set(Object.keys(nodeMap)),2);
+  if(ids.length!==2)return;
+  const from=nodeMap[ids[0]],to=nodeMap[ids[1]];
+  if(!from||!to)return;
+  // Check the exact link exists in the current local SQLite graph.
+  const confirmed=edgesData.some(e=>
+    (e.source.id===from.id&&e.target.id===to.id)||
+    (e.source.id===to.id&&e.target.id===from.id));
+  if(confirmed)animateParticleTrail(from,to,'#22d3ee',()=>pulseNode(to.id,'#22d3ee',900));
+}
+
+// ═══════════════════════════════════════
 // WebSocket
 // ═══════════════════════════════════════
 
@@ -890,10 +1141,17 @@ function connectWebSocket() {
     try { parsed = JSON.parse(msg.data); } catch { return; }
 
     if (parsed.type === 'reload') { buildGraph(adaptGraph(parsed.data)); return; }
+    if (parsed.type === 'error') {
+      document.getElementById('route-phase').textContent=
+        'Python API временно недоступен. События обновятся после восстановления.';
+      return;
+    }
 
     if (parsed.type === 'event') {
       const ev = parsed.data;
       addFeedItem(ev);
+      showAnswerRoute(ev);
+      showVerifiedLinkTrail(ev);
 
       if (ev.type === 'read') {
         const nid = findNodeById(ev.path);
@@ -1021,26 +1279,83 @@ window._rescan = function() {
 // Animation Loop
 // ═══════════════════════════════════════
 
-function animate() {
+function applyAdaptiveLOD(){
+  const size=qualityLevel==='high'?2:qualityLevel==='medium'?1.4:1;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,size));
+  const maxVisible=qualityLevel==='low'?620:qualityLevel==='medium'?980:Infinity;
+  let visibleLeaves=0;
+  for(const node of nodesData||[]){
+    const info=nodeMeshes[node.id];
+    if(!info)continue;
+    const isHub=node.type==='category'||node.type==='core';
+    const keep=isHub||node.id===selectedNodeId||
+      activeRouteIds.has(node.id)||activeGrowthIds.has(node.id)||
+      visibleLeaves<maxVisible;
+    info.mesh.visible=keep;
+    if(!isHub&&keep)visibleLeaves++;
+    info.mesh.geometry=!isHub&&qualityLevel!=='high'?sphereGeoLow:sphereGeo;
+    if(info.glow)info.glow.visible=qualityLevel!=='low'||node.id===selectedNodeId;
+    if(info.label)info.label.visible=isHub||showLabels;
+  }
+  if(edgeMesh)edgeMesh.material.opacity=qualityLevel==='high'?0.9:
+    qualityLevel==='medium'?0.72:0.48;
+}
+function animate(){
+  if(renderDisabled)return;
   requestAnimationFrame(animate);
   const now=performance.now();
-  // Cap long background-tab pauses; changing speed does not jump or reset the scene.
+  if(document.hidden){
+    previousFrame=now;
+    performanceWindow=now;
+    frameCounter=0;
+    return; // Pause work in background tabs.
+  }
   const delta=previousFrame?Math.max(0,Math.min(100,now-previousFrame)):16.67;
   previousFrame=now;
-  animationClock+=delta*graphics.speed;
-  tickAnimations(animationClock);
+  try{
+    animationClock+=delta*graphics.speed;
+    tickAnimations(animationClock);
+    if(simulation){
+      physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
+      let ticks=Math.min(4,Math.floor(physicsProgress));
+      physicsProgress-=ticks;
+      while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+    }
+    updatePositions();
+    updateMist();
+    controls.update();
+    renderer.render(scene,camera);
 
-  // The original force simulation is now clocked by the same user-selected speed.
-  // At most four ticks per frame prevent CPU spikes when the tab resumes.
-  if(simulation){
-    physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
-    let ticks=Math.min(4,Math.floor(physicsProgress));
-    physicsProgress-=ticks;
-    while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+    // Real measured frame rate; quality changes have hysteresis.
+    frameCounter++;
+    const elapsed=now-performanceWindow;
+    if(elapsed>=1900){
+      renderFps=Math.round(frameCounter*1000/elapsed);
+      const next=qualityFromFps(renderFps,qualityLevel);
+      if(next!==qualityLevel){
+        qualityLevel=next;
+        applyAdaptiveLOD();
+      }
+      const labels={high:'Высокое',medium:'Баланс',low:'Экономия'};
+      document.getElementById('render-status').textContent=
+        '3D · '+renderFps+' FPS · '+labels[qualityLevel]+
+        (newNodeCount>0?' · +'+newNodeCount+' записей':'');
+      performanceWindow=now;
+      frameCounter=0;
+    }
+    if(!renderReady){
+      renderReady=true;
+      window.SORYUKA_RENDERER_READY=true;
+      window.dispatchEvent(new Event('soryuka:renderer-ready'));
+      applyAdaptiveLOD();
+    }
+  }catch(error){
+    renderDisabled=true;
+    window.dispatchEvent(new CustomEvent('soryuka:renderer-failed',{
+      detail:'Не удалось отрисовать 3D-карту Сорюки. Проверь WebGL и драйвер видеокарты.'
+    }));
+    console.error('Soryuka WebGL render failure',error);
   }
-  updatePositions();
-  controls.update();
-  renderer.render(scene, camera);
 }
 animate();
 
@@ -1061,7 +1376,12 @@ window.addEventListener('resize', () => {
 // ═══════════════════════════════════════
 
 fetch('/api/mirror/graph',{cache:'no-store'})
-  .then(r => r.json())
-  .then(data => { buildGraph(adaptGraph(data)); connectWebSocket(); })
-  .catch(e => console.error('Failed to load graph data:', e));
+  .then(r=>{if(!r.ok)throw Error('Python API '+r.status);return r.json();})
+  .then(data=>buildGraph(adaptGraph(data)))
+  .catch(e=>{
+    console.error('Soryuka graph load failed',e);
+    document.getElementById('render-status').textContent=
+      '3D · данные недоступны · повторное подключение';
+  })
+  .finally(()=>connectWebSocket());
 
