@@ -1262,26 +1262,81 @@ window._rescan = function() {
 // Animation Loop
 // ═══════════════════════════════════════
 
-function animate() {
+function applyAdaptiveLOD(){
+  const size=qualityLevel==='high'?2:qualityLevel==='medium'?1.4:1;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,size));
+  const maxVisible=qualityLevel==='low'?620:qualityLevel==='medium'?980:Infinity;
+  let visibleLeaves=0;
+  for(const node of nodesData||[]){
+    const info=nodeMeshes[node.id];
+    if(!info)continue;
+    const isHub=node.type==='category'||node.type==='core';
+    const keep=isHub||node.id===selectedNodeId||visibleLeaves<maxVisible;
+    info.mesh.visible=keep;
+    if(!isHub&&keep)visibleLeaves++;
+    info.mesh.geometry=!isHub&&qualityLevel!=='high'?sphereGeoLow:sphereGeo;
+    if(info.glow)info.glow.visible=qualityLevel!=='low'||node.id===selectedNodeId;
+    if(info.label)info.label.visible=isHub||showLabels;
+  }
+  if(edgeMesh)edgeMesh.material.opacity=qualityLevel==='high'?0.9:
+    qualityLevel==='medium'?0.72:0.48;
+}
+function animate(){
+  if(renderDisabled)return;
   requestAnimationFrame(animate);
   const now=performance.now();
-  // Cap long background-tab pauses; changing speed does not jump or reset the scene.
+  if(document.hidden){
+    previousFrame=now;
+    performanceWindow=now;
+    frameCounter=0;
+    return; // Pause work in background tabs.
+  }
   const delta=previousFrame?Math.max(0,Math.min(100,now-previousFrame)):16.67;
   previousFrame=now;
-  animationClock+=delta*graphics.speed;
-  tickAnimations(animationClock);
+  try{
+    animationClock+=delta*graphics.speed;
+    tickAnimations(animationClock);
+    if(simulation){
+      physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
+      let ticks=Math.min(4,Math.floor(physicsProgress));
+      physicsProgress-=ticks;
+      while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+    }
+    updatePositions();
+    updateMist();
+    controls.update();
+    renderer.render(scene,camera);
 
-  // The original force simulation is now clocked by the same user-selected speed.
-  // At most four ticks per frame prevent CPU spikes when the tab resumes.
-  if(simulation){
-    physicsProgress+=Math.min(4,delta/16.67*graphics.speed);
-    let ticks=Math.min(4,Math.floor(physicsProgress));
-    physicsProgress-=ticks;
-    while(ticks-->0 && simulation.alpha()>simulation.alphaMin())simulation.tick();
+    // Real measured frame rate; quality changes have hysteresis.
+    frameCounter++;
+    const elapsed=now-performanceWindow;
+    if(elapsed>=1900){
+      renderFps=Math.round(frameCounter*1000/elapsed);
+      const next=qualityFromFps(renderFps,qualityLevel);
+      if(next!==qualityLevel){
+        qualityLevel=next;
+        applyAdaptiveLOD();
+      }
+      const labels={high:'Высокое',medium:'Баланс',low:'Экономия'};
+      document.getElementById('render-status').textContent=
+        '3D · '+renderFps+' FPS · '+labels[qualityLevel]+
+        (newNodeCount>0?' · +'+newNodeCount+' записей':'');
+      performanceWindow=now;
+      frameCounter=0;
+    }
+    if(!renderReady){
+      renderReady=true;
+      window.SORYUKA_RENDERER_READY=true;
+      window.dispatchEvent(new Event('soryuka:renderer-ready'));
+      applyAdaptiveLOD();
+    }
+  }catch(error){
+    renderDisabled=true;
+    window.dispatchEvent(new CustomEvent('soryuka:renderer-failed',{
+      detail:'Не удалось отрисовать 3D-карту Сорюки. Проверь WebGL и драйвер видеокарты.'
+    }));
+    console.error('Soryuka WebGL render failure',error);
   }
-  updatePositions();
-  controls.update();
-  renderer.render(scene, camera);
 }
 animate();
 
