@@ -17,6 +17,7 @@ const staticFiles=new Map([
   ['/console','console.html'],['/console.html','console.html'],
   ['/style.css','style.css'],['/app.js','app.js'],
   ['/mirror-original.js','mirror-original.js'],
+  ['/graphics-settings.js','graphics-settings.js'],
   ['/vendor/three.module.js','node_modules/three/build/three.module.js'],
   ['/vendor/three-addons/controls/OrbitControls.js','node_modules/three/examples/jsm/controls/OrbitControls.js'],
   ['/vendor/d3-force-3d.min.js','node_modules/d3-force-3d/dist/d3-force-3d.min.js']
