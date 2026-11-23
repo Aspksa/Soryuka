@@ -163,7 +163,7 @@ class SoulStore:
         with self.db() as conn:
             conn.execute("INSERT INTO memories(id,kind,body,created_at) VALUES(?,?,?,?)",
                          (record["id"],record["kind"],record["body"],record["created_at"]))
-            self._audit(conn, "memory_approved", record["id"], None, json.dumps(record,ensure_ascii=False))
+            self._audit(conn, "memory_approved", record["id"], None, json.dumps({"kind":kind}))
         return record
 
     def list_memories(self, limit: int = 8) -> list[dict]:
@@ -179,7 +179,7 @@ class SoulStore:
             if old is None:
                 return False
             conn.execute("DELETE FROM memories WHERE id=?", (mid,))
-            self._audit(conn,"memory_deleted",mid,json.dumps(dict(old),ensure_ascii=False),None)
+            self._audit(conn,"memory_deleted",mid,json.dumps({"kind":old["kind"]}),None)
         return True
 
     def add_event(self, body: str, fiction: bool, confirmed: bool) -> dict:
@@ -188,7 +188,7 @@ class SoulStore:
         row={"id":new_id(),"body":clean(body),"fiction":int(fiction),"created_at":now()}
         with self.db() as conn:
             conn.execute("INSERT INTO story_events(id,body,fiction,created_at) VALUES(?,?,?,?)",tuple(row.values()))
-            self._audit(conn,"event_confirmed",row["id"],None,json.dumps(row,ensure_ascii=False))
+            self._audit(conn,"event_confirmed",row["id"],None,json.dumps({"fiction":row["fiction"]}))
         return row
 
     def timeline(self, limit: int = 50) -> list[dict]:
@@ -196,6 +196,52 @@ class SoulStore:
             return self.as_dicts(conn.execute(
                 "SELECT id,body,fiction,created_at FROM story_events ORDER BY created_at DESC,id DESC LIMIT ?",
                 (max(1,min(int(limit),100)),)).fetchall())
+
+    def delete_session(self, session_id: str) -> bool:
+        sid=check_id(session_id)
+        with self.db() as conn:
+            exists=conn.execute("SELECT 1 FROM sessions WHERE id=?",(sid,)).fetchone()
+            if not exists:
+                return False
+            conn.execute("DELETE FROM messages WHERE session_id=?",(sid,))
+            conn.execute("DELETE FROM sessions WHERE id=?",(sid,))
+            self._audit(conn,"session_deleted",sid,None,None)
+        return True
+
+    def delete_event(self, event_id: str) -> bool:
+        eid=check_id(event_id)
+        with self.db() as conn:
+            old=conn.execute("SELECT fiction FROM story_events WHERE id=?",(eid,)).fetchone()
+            if old is None:
+                return False
+            conn.execute("DELETE FROM story_events WHERE id=?",(eid,))
+            self._audit(conn,"event_deleted",eid,json.dumps({"fiction":old["fiction"]}),None)
+        return True
+
+    def delete_feedback(self, feedback_id: str) -> bool:
+        fid=check_id(feedback_id)
+        with self.db() as conn:
+            old=conn.execute("SELECT skill,rating FROM feedback WHERE id=?",(fid,)).fetchone()
+            if old is None:
+                return False
+            conn.execute("DELETE FROM feedback WHERE id=?",(fid,))
+            self._audit(conn,"feedback_deleted",fid,json.dumps(dict(old),ensure_ascii=False),None)
+        return True
+
+    def create_backup(self, confirmed: bool) -> dict:
+        """Explicit, consistent online SQLite backup; never started in background."""
+        if confirmed is not True:
+            raise StoreError("Explicit confirmation required to create backup")
+        dest=self.path.parent/"backups"
+        dest.mkdir(parents=True,exist_ok=True)
+        stamp=datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        target=dest/f"soryuka-{stamp}-{uuid.uuid4().hex[:8]}.sqlite3"
+        with sqlite3.connect(str(self.path),timeout=15) as original:
+            with sqlite3.connect(str(target),timeout=15) as backup:
+                original.backup(backup)
+        with self.db() as conn:
+            self._audit(conn,"backup_created",target.name,None,None)
+        return {"filename":target.name,"path":str(target),"created_at":now()}
 
     def propose_goal(self, skill: str, title: str, criterion: str) -> dict:
         if skill not in SKILLS:
@@ -239,7 +285,7 @@ class SoulStore:
         row={"id":new_id(),"skill":skill,"rating":rating,"note":clean(note,1500),"created_at":now()}
         with self.db() as conn:
             conn.execute("INSERT INTO feedback(id,skill,rating,note,created_at) VALUES(?,?,?,?,?)",tuple(row.values()))
-            self._audit(conn,"feedback_received",row["id"],None,json.dumps(row,ensure_ascii=False))
+            self._audit(conn,"feedback_received",row["id"],None,json.dumps({"skill":skill,"rating":rating},ensure_ascii=False))
         return row
 
     def skill_metrics(self) -> list[dict]:
