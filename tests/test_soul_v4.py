@@ -345,7 +345,7 @@ class API4Tests(unittest.TestCase):
 
 class V4UIContractTests(unittest.TestCase):
     def test_ui_ids_match_and_source_is_identical_to_checked_js(self):
-        html=(ROOT/"ui"/"index.html").read_text(encoding="utf-8")
+        html=(ROOT/"ui"/"console.html").read_text(encoding="utf-8")
         src=(ROOT/"ui"/"app.js").read_text(encoding="utf-8")
         self.assertEqual(src,(ROOT/"ui"/"app.ts").read_text(encoding="utf-8"))
         required=["v4-search","v4-link-a","v4-link-b","v4-review-id","v4-evidence-id",
