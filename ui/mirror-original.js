@@ -109,6 +109,8 @@ const sphereGeoLow = new THREE.SphereGeometry(1, 8, 6);
 let graphSignature='';
 let selectedNodeId=null;
 let newNodeCount=0;
+let activeRouteIds=new Set();
+let activeGrowthIds=new Set();
 
 // ═══════════════════════════════════════
 // Scene Setup
@@ -461,6 +463,7 @@ function buildGraph(data) {
   clearGraph();
   graphSignature=signature;
   newNodeCount+=born.length;
+  activeGrowthIds=new Set(born.slice(0,6));
   nodesData = nodes; edgesData = edges; colorsData = colors;
 
   nodeMap = {};
@@ -582,6 +585,10 @@ function buildGraph(data) {
   if(renderReady)applyAdaptiveLOD();
   if(born.length){
     // Only real new SQLite records generate a "birth" visual, never placeholder nodes.
+    addAnimation(2100,()=>{},()=>{
+      activeGrowthIds.clear();
+      if(renderReady)applyAdaptiveLOD();
+    });
     const limited=born.slice(0,6);
     addAnimation(500,()=>{},()=>{
       for(const id of limited){
@@ -1063,6 +1070,8 @@ function showAnswerRoute(event){
      !['request_started','response_saved'].includes(event.phase))return;
   const known=new Set(Object.keys(nodeMap));
   const ids=verifiedEventTargets(event,known,8);
+  activeRouteIds=new Set(ids);
+  if(renderReady)applyAdaptiveLOD(); // Keep real prompt sources visible under low-FPS LOD.
   const panel=document.getElementById('answer-route');
   const phase=document.getElementById('route-phase');
   const list=document.getElementById('route-source-list');
@@ -1277,7 +1286,9 @@ function applyAdaptiveLOD(){
     const info=nodeMeshes[node.id];
     if(!info)continue;
     const isHub=node.type==='category'||node.type==='core';
-    const keep=isHub||node.id===selectedNodeId||visibleLeaves<maxVisible;
+    const keep=isHub||node.id===selectedNodeId||
+      activeRouteIds.has(node.id)||activeGrowthIds.has(node.id)||
+      visibleLeaves<maxVisible;
     info.mesh.visible=keep;
     if(!isHub&&keep)visibleLeaves++;
     info.mesh.geometry=!isHub&&qualityLevel!=='high'?sphereGeoLow:sphereGeo;
