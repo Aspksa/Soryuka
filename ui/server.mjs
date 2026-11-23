@@ -121,14 +121,14 @@ function wsSend(ws,doc){
   ws.send(JSON.stringify(doc));
 }
 function eventForOriginal(item){
-  const map={read:'read',write:'write',delete:'write',link:'grep',learn:'search',growth:'search'};
+  const map={read:'read',write:'write',delete:'delete',link:'link',learn:'learn',growth:'growth'};
   const type=map[item.kind]||'read',targets=Array.isArray(item.targets)?item.targets.slice(0,10):[];
   return {
     type,origin_kind:item.kind,
     path:targets[0]||'group:'+(item.category||'memory'),
     timestamp:item.at,
     query:'', // Never put private chat text into feed.
-    results:['search','grep'].includes(type)?targets.map(path=>({path,score:1})):[],
+    results:['search','grep','learn','growth','link','delete'].includes(type)?targets.map(path=>({path,score:1})):[],
     title:item.title
   };
 }
