@@ -31,6 +31,7 @@ let fps=60;
 let graphicLost=false;
 let lastLodUpdate=0;
 let visibleNodeCount=0;
+let atmosphere=[];
 let selectedNodeId=null;
 const recentMotionTrails=[];
 
@@ -133,7 +134,7 @@ function applyGraphics(){
   ambientLight.intensity=3.5*graphics.light;
   dirLight1.intensity=0.8*graphics.light;
   dirLight2.intensity=0.3*graphics.light;
-  if(typeof applyAtmosphere==='function' && typeof atmosphere!=='undefined')applyAtmosphere();
+  if(atmosphere.length)applyAtmosphere();
 }
 function showGraphicsValues(){
   const formats={
@@ -296,7 +297,7 @@ function buildAtmosphere(){
   }
   return layers;
 }
-const atmosphere=buildAtmosphere();
+atmosphere=buildAtmosphere();
 function applyAtmosphere(){
   const densityBoost=Math.min(2,0.55+graphics.fog/0.0008*0.45);
   for(let i=0;i<atmosphere.length;i++){
