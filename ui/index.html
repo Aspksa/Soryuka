@@ -210,14 +210,29 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
  .feed-header{font-size:10px;padding:10px}
 }
 #soryuka-engine-retry{background:#3a3021;color:#efd2a1;border:1px solid #8b7147;border-radius:6px;padding:9px 12px;cursor:pointer;margin-right:12px}
+
+/* Temporary seal avatar: reuses the existing chat page, no second chat implementation. */
+.soryuka-avatar{pointer-events:auto;display:grid;place-items:center;flex:none;width:52px;height:52px;border-radius:50%;border:1px solid #b8995e;background:radial-gradient(circle at 35% 25%,#403322,#100e12 75%);color:#f2d59a;font:30px serif;cursor:pointer;box-shadow:0 0 20px #b88a3933}
+.soryuka-avatar:hover,.soryuka-avatar:focus-visible{outline:2px solid #e9c88c;outline-offset:3px}
+.soryuka-brand{display:flex;align-items:center;gap:12px}
+.soryuka-chat-overlay[hidden]{display:none}
+.soryuka-chat-overlay{position:fixed;inset:0;z-index:60;background:#050509b8;display:flex;justify-content:flex-end}
+.soryuka-chat-panel{width:min(640px,100vw);height:100dvh;background:#080809;display:flex;flex-direction:column;box-shadow:-20px 0 70px #000b}
+.soryuka-chat-toolbar{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;color:#e9c88c;border-bottom:1px solid #30281e}
+.soryuka-chat-toolbar button{background:transparent;border:1px solid #8c754e;color:#e9c88c;border-radius:7px;padding:6px 12px;cursor:pointer}
+.soryuka-chat-messages{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}.soryuka-chat-message{max-width:90%;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:12px;background:#211e20}.soryuka-chat-message.user{align-self:flex-end;background:#49351f}.soryuka-chat-compose{display:flex;gap:8px;padding:12px;border-top:1px solid #403424}.soryuka-chat-compose textarea{flex:1;min-width:0;background:#17151a;color:#fff;padding:10px;border:1px solid #665238;border-radius:8px}.soryuka-chat-compose button{padding:8px;background:#49351f;color:#f3d8a3;border:1px solid #a88956;border-radius:8px}.soryuka-chat-status{font-size:12px;color:#e3c58b;padding:5px 14px}
+@media(max-width:560px){.soryuka-avatar{width:42px;height:42px;font-size:24px}.soryuka-brand{gap:8px}}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div>
+  <div class="soryuka-brand">
+    <button class="soryuka-avatar" id="soryuka-avatar" type="button" aria-label="Открыть чат Сорюки" aria-controls="soryuka-chat-overlay" aria-expanded="false" title="Чат Сорюки">霜</button>
+    <div>
     <h1>СОРЮКА · КАРТА ПАМЯТИ <span class="live-badge"><span class="live-dot"></span> РАБОТАЕТ</span></h1>
     <div class="subtitle">Живая трёхмерная карта локальной памяти</div>
+    </div>
   </div>
   <div class="stats">
     <div><span id="nodeCount">0</span> узлов</div>
@@ -286,6 +301,12 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <a href="/console.html">Перейти в чат Сорюки</a></div>
 
 <div id="canvas-container"></div>
+<div class="soryuka-chat-overlay" id="soryuka-chat-overlay" hidden>
+  <section class="soryuka-chat-panel" role="dialog" aria-modal="true" aria-label="Чат Сорюки">
+    <div class="soryuka-chat-toolbar"><strong>Сорюка · чат</strong><button id="soryuka-chat-close" type="button" aria-label="Закрыть чат">Закрыть ×</button></div>
+    <div id="soryuka-chat-messages" class="soryuka-chat-messages" role="log" aria-live="polite"></div><p class="soryuka-chat-status" id="soryuka-chat-status">Локальная история SQLite</p><form class="soryuka-chat-compose" id="soryuka-chat-form"><textarea id="soryuka-chat-input" maxlength="6000" rows="2" required aria-label="Сообщение Сорюке" placeholder="Напиши Сорюке…"></textarea><button type="submit" id="soryuka-chat-send">Отправить</button></form>
+  </section>
+</div>
 
 <div class="activity-feed">
   <div class="feed-header">
@@ -311,6 +332,24 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 }
 </script>
 
+<script>
+(function(){
+ const avatar=document.getElementById('soryuka-avatar'),overlay=document.getElementById('soryuka-chat-overlay'),close=document.getElementById('soryuka-chat-close'),messages=document.getElementById('soryuka-chat-messages'),form=document.getElementById('soryuka-chat-form'),input=document.getElementById('soryuka-chat-input'),send=document.getElementById('soryuka-chat-send'),status=document.getElementById('soryuka-chat-status');
+ let session=localStorage.getItem('soryuka.session')||'',loaded=false,busy=false,lastFocus=null;
+ async function api(path,data){const r=await fetch('/api'+path,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw Error(j.error||'Ошибка '+r.status);return j;}
+ function add(role,body){const el=document.createElement('div');el.className='soryuka-chat-message '+(role==='user'?'user':'assistant');el.textContent=body;messages.append(el);messages.scrollTop=messages.scrollHeight;}
+ async function load(){if(!session){session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',session);}
+  try{const h=await api('/history?session_id='+encodeURIComponent(session));messages.replaceChildren();if(h.items.length)h.items.forEach(x=>add(x.role,x.body));else add('assistant','Мой хозяин, я готова к беседе.');}
+  catch{session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',session);messages.replaceChildren();add('assistant','Мой хозяин, я готова к беседе.');}loaded=true;}
+ async function toggle(open){overlay.hidden=!open;avatar.setAttribute('aria-expanded',String(open));if(open){lastFocus=document.activeElement;close.focus();if(!loaded){try{await load();}catch(e){status.textContent=e.message;}}input.focus();}else(lastFocus||avatar).focus();}
+ avatar.addEventListener('click',()=>toggle(true));close.addEventListener('click',()=>toggle(false));overlay.addEventListener('click',e=>{if(e.target===overlay)toggle(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!overlay.hidden)toggle(false)});
+ form.addEventListener('submit',async e=>{e.preventDefault();const value=input.value.trim();if(!value||busy)return;if(!loaded){try{await load();}catch(err){status.textContent=err.message;return;}}
+ busy=true;send.disabled=true;input.value='';add('user',value);status.textContent='Сорюка отвечает…';
+ try{const r=await api('/chat',{session_id:session,message:value,intent:'greeting'});add('assistant',r.answer);status.textContent='Ответ сохранён';}
+ catch(err){add('assistant','Ошибка: '+err.message);status.textContent='Ошибка соединения';}
+ finally{busy=false;send.disabled=false;input.focus();}});
+})();
+</script>
 <script src="/mirror-bootstrap.js"></script>
 <script type="module" src="/mirror-original.js"></script>
 </body>
