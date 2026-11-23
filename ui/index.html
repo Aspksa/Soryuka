@@ -334,20 +334,89 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 
 <script>
 (function(){
- const avatar=document.getElementById('soryuka-avatar'),overlay=document.getElementById('soryuka-chat-overlay'),close=document.getElementById('soryuka-chat-close'),messages=document.getElementById('soryuka-chat-messages'),form=document.getElementById('soryuka-chat-form'),input=document.getElementById('soryuka-chat-input'),send=document.getElementById('soryuka-chat-send'),status=document.getElementById('soryuka-chat-status');
- let session=localStorage.getItem('soryuka.session')||'',loaded=false,busy=false,lastFocus=null;
- async function api(path,data){const r=await fetch('/api'+path,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw Error(j.error||'Ошибка '+r.status);return j;}
- function add(role,body){const el=document.createElement('div');el.className='soryuka-chat-message '+(role==='user'?'user':'assistant');el.textContent=body;messages.append(el);messages.scrollTop=messages.scrollHeight;}
- async function load(){if(!session){session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',session);}
-  try{const h=await api('/history?session_id='+encodeURIComponent(session));messages.replaceChildren();if(h.items.length)h.items.forEach(x=>add(x.role,x.body));else add('assistant','Мой хозяин, я готова к беседе.');}
-  catch{session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',session);messages.replaceChildren();add('assistant','Мой хозяин, я готова к беседе.');}loaded=true;}
- async function toggle(open){overlay.hidden=!open;avatar.setAttribute('aria-expanded',String(open));if(open){lastFocus=document.activeElement;close.focus();if(!loaded){try{await load();}catch(e){status.textContent=e.message;}}input.focus();}else(lastFocus||avatar).focus();}
- avatar.addEventListener('click',()=>toggle(true));close.addEventListener('click',()=>toggle(false));overlay.addEventListener('click',e=>{if(e.target===overlay)toggle(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!overlay.hidden)toggle(false)});
- form.addEventListener('submit',async e=>{e.preventDefault();const value=input.value.trim();if(!value||busy)return;if(!loaded){try{await load();}catch(err){status.textContent=err.message;return;}}
- busy=true;send.disabled=true;input.value='';add('user',value);status.textContent='Сорюка отвечает…';
- try{const r=await api('/chat',{session_id:session,message:value,intent:'greeting'});add('assistant',r.answer);status.textContent='Ответ сохранён';}
- catch(err){add('assistant','Ошибка: '+err.message);status.textContent='Ошибка соединения';}
- finally{busy=false;send.disabled=false;input.focus();}});
+  const byId=id=>document.getElementById(id);
+  const avatar=byId('soryuka-avatar'),overlay=byId('soryuka-chat-overlay'),close=byId('soryuka-chat-close'),messages=byId('soryuka-chat-messages'),form=byId('soryuka-chat-form'),input=byId('soryuka-chat-input'),send=byId('soryuka-chat-send'),status=byId('soryuka-chat-status');
+  let session='',loaded=false,busy=false,lastFocus=null,loading=null,opening=0;
+  const sessionKey='soryuka.session';
+  async function api(path,data){
+    const response=await fetch('/api'+path,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
+    let json;
+    try{json=await response.json();}catch{throw Error('Сервер вернул некорректный ответ');}
+    if(!response.ok)throw Error(json.error||'Ошибка '+response.status);
+    return json;
+  }
+  function add(role,body){
+    const el=document.createElement('div');
+    el.className='soryuka-chat-message '+(role==='user'?'user':'assistant');
+    el.textContent=String(body||'');
+    messages.append(el);
+    messages.scrollTop=messages.scrollHeight;
+  }
+  async function load(){
+    const stored=localStorage.getItem(sessionKey)||'';
+    if(stored!==session){session=stored;loaded=false;}
+    if(!session){
+      session=(await api('/session',{})).session_id;
+      localStorage.setItem(sessionKey,session);
+    }
+    // Never replace an existing session on transient network/SQLite errors.
+    const result=await api('/history?session_id='+encodeURIComponent(session));
+    if(!Array.isArray(result.items))throw Error('Некорректная история');
+    messages.replaceChildren();
+    if(result.items.length)result.items.forEach(item=>add(item.role,item.body));
+    else add('assistant','Мой хозяин, я готова к беседе.');
+    loaded=true;
+    status.textContent='Локальная история SQLite';
+  }
+  async function refresh(){
+    if(loading)return loading;
+    loading=load().finally(()=>{loading=null;});
+    return loading;
+  }
+  async function toggle(open){
+    const seq=++opening;
+    overlay.hidden=!open;
+    avatar.setAttribute('aria-expanded',String(open));
+    if(!open){(lastFocus||avatar).focus();return;}
+    lastFocus=document.activeElement;
+    close.focus();
+    if(!busy){
+      try{await refresh();}catch(error){status.textContent='Не удалось загрузить историю: '+error.message;}
+    }
+    if(seq===opening&&!overlay.hidden)input.focus();
+  }
+  avatar.addEventListener('click',()=>toggle(true));
+  close.addEventListener('click',()=>toggle(false));
+  overlay.addEventListener('click',event=>{if(event.target===overlay)toggle(false);});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!overlay.hidden)toggle(false);});
+  window.addEventListener('storage',event=>{
+    if(event.key!==sessionKey)return;
+    session=event.newValue||'';loaded=false;
+    if(!overlay.hidden&&!busy)refresh().catch(error=>{status.textContent=error.message;});
+  });
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
+    const value=input.value.trim();
+    if(!value||busy)return;
+    busy=true;send.disabled=true;
+    try{
+      if(!loaded)await refresh();
+      const sid=session;
+      add('user',value);
+      status.textContent='Сорюка отвечает…';
+      const response=await api('/chat',{session_id:sid,message:value});
+      input.value='';
+      if(session===sid)add('assistant',response.answer);
+      status.textContent='Ответ сохранён в SQLite';
+    }catch(error){
+      // Keep the draft for a manual retry; never automatically re-send a paid request.
+      status.textContent='Не удалось подтвердить сохранение: '+error.message+'. Проверь историю перед повторной отправкой.';
+      loaded=false;
+    }finally{
+      busy=false;send.disabled=false;
+      if(!overlay.hidden)input.focus();
+    }
+  });
 })();
 </script>
 <script src="/mirror-bootstrap.js"></script>
