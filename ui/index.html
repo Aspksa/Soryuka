@@ -11,7 +11,7 @@
 <body>
 <main class="layout">
   <header class="header">
-    <div class="brand"><span class="seal" aria-hidden="true">霜</span><div><strong>霜琉華 <span>Soryuka</span></strong><small>Living Personality 4.0</small></div></div>
+    <div class="brand"><span class="seal" aria-hidden="true">霜</span><div><strong>霜琉華 <span>Soryuka</span></strong><small>Living Personality 5.0</small></div></div>
     <div class="right-status"><span id="status-dot" class="status-dot"></span><span id="status">Проверка подключения…</span><button id="new-chat" type="button" class="subtle">Новый разговор</button><button id="delete-chat" type="button" class="subtle">Удалить разговор</button></div>
   </header>
   <section class="scene" aria-label="Художественная визуализация девяти хвостов Сорюки">
@@ -170,6 +170,70 @@
       <div id="v4-council" class="item-list"></div>
       <button id="v4-diary-refresh" type="button" class="subtle">Дневник обучения</button>
       <div id="v4-diary" class="item-list"></div>
+    </details>
+    <details>
+      <summary>Эволюция 5.0 · память, логика, фоновый рост</summary>
+      <p>Все фоновые задания выполняются только локально и ничего не меняют без согласования. Облако используется только при отправке сообщения или отдельном подтверждённом запросе embeddings.</p>
+      <fieldset class="v5-settings">
+        <legend>Разрешения хозяина</legend>
+        <label class="consent"><input type="checkbox" id="v5-background"> Локальный фоновый цикл (по умолчанию выключен)</label>
+        <label class="consent"><input type="checkbox" id="v5-capture"> Предлагать факты после разговора, но не сохранять их автоматически</label>
+        <label class="consent"><input type="checkbox" id="v5-embedding"> Разрешить ручные платные Cloud.ru embeddings-запросы</label>
+        <button type="button" id="v5-save-permissions">Сохранить разрешения</button>
+      </fieldset>
+      <h3>Предложения для памяти</h3>
+      <div id="v5-fact-suggestions" class="item-list" aria-live="polite"></div>
+      <div class="v5-actions">
+        <button type="button" id="v5-episode-preview">Показать сводку текущего разговора</button>
+        <button type="button" id="v5-episode-save" class="subtle">Подтвердить сохранение сводки</button>
+      </div>
+      <div id="v5-episode" class="item-list" aria-live="polite"></div>
+      <div id="v5-episode-list" class="item-list"></div>
+      <form id="v5-evidence-form" class="compact-form">
+        <label for="v5-question">Разбор вопроса по памяти</label>
+        <input id="v5-question" placeholder="Какие подтверждения есть?" maxlength="250" required>
+        <button type="submit">Проверить логику</button>
+      </form>
+      <div id="v5-evidence" class="item-list" aria-live="polite"></div>
+      <form id="v5-causal-form" class="compact-form">
+        <label for="v5-cause">Причина</label><select id="v5-cause"></select>
+        <label for="v5-effect">Следствие</label><select id="v5-effect"></select>
+        <input id="v5-causal-evidence" maxlength="600" required placeholder="Источник или обоснование причинности">
+        <label class="consent"><input id="v5-causal-confirm" type="checkbox" required> Лично подтверждаю причинную связь</label>
+        <button type="submit">Связать причину и следствие</button>
+      </form>
+      <div id="v5-causal-links" class="item-list"></div>
+      <div class="v5-actions">
+        <button type="button" id="v5-index-embeddings">Индексировать до 2 воспоминаний (возможная оплата)</button>
+      </div>
+      <form id="v5-vector-form" class="compact-form">
+        <label for="v5-vector-q">Смысловой поиск в Cloud.ru (возможная оплата)</label>
+        <input id="v5-vector-q" maxlength="250" placeholder="Смысл вопроса" required>
+        <button type="submit">Искать</button>
+      </form>
+      <div id="v5-vectors" class="item-list"></div>
+      <h3>Локальные задания для роста</h3>
+      <div class="v5-actions">
+        <button type="button" id="v5-refresh-growth">Показать состояние</button>
+        <button type="button" id="v5-seed-growth">Предложить три локальные проверки</button>
+        <button type="button" id="v5-run-growth">Запустить до двух заданий сейчас</button>
+      </div>
+      <div id="v5-growth-tasks" class="item-list"></div>
+      <div id="v5-growth-proposals" class="item-list"></div>
+      <h3>Планы и дневник обучения</h3>
+      <div class="v5-actions"><button type="button" id="v5-plan-refresh">Рассчитать план роста</button></div>
+      <div id="v5-plan" class="item-list"></div>
+      <div id="v5-diary" class="item-list"></div>
+      <form id="v5-transfer-form" class="compact-form">
+        <label for="v5-transfer-from">Перенос навыка — откуда</label>
+        <select id="v5-transfer-from"><option>логика</option><option>общение</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <label for="v5-transfer-to">Куда</label>
+        <select id="v5-transfer-to"><option>общение</option><option>логика</option><option>языки</option><option>программирование</option><option>дизайн</option><option>творчество</option></select>
+        <label for="v5-transfer-strategy">Одобренная стратегия</label><select id="v5-transfer-strategy"></select>
+        <input id="v5-transfer-rationale" maxlength="500" placeholder="Почему перенос может сработать" required>
+        <button type="submit">Предложить перенос</button>
+      </form>
+      <div id="v5-transfers" class="item-list"></div>
     </details>
   </section>
   <footer>霜琉華 · Локальная память SQLite · Cloud.ru по запросу · Без фоновых агентов</footer>

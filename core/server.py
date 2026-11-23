@@ -10,15 +10,17 @@ import sys
 try:
     from .soul_engine import SoryukaEngine,CloudConfigError,CloudRequestError
     from .soul_store import SoulStore,StoreError
+    from .growth_v5 import BackgroundLearningLoop
 except ImportError:
     from soul_engine import SoryukaEngine,CloudConfigError,CloudRequestError
     from soul_store import SoulStore,StoreError
+    from growth_v5 import BackgroundLearningLoop
 
 MAX_BODY=32768
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version="SoryukaLocal/4.0"
+    server_version="SoryukaLocal/5.0"
 
     def log_message(self, format, *args):
         # Avoid logging private chat bodies or secret headers.
@@ -91,7 +93,7 @@ class AppHandler(BaseHTTPRequestHandler):
         store=self.server.store
         engine=self.server.engine
         if path=="/api/health":
-            return {"ok":True,"version":"4.0","configured":engine.cloud.ready(),
+            return {"ok":True,"version":"5.0","configured":engine.cloud.ready(),
                     "database":"ready","external_calls_automatic":False}
         if path=="/api/profile":
             return engine.profile()
@@ -138,6 +140,32 @@ class AppHandler(BaseHTTPRequestHandler):
             return {"items":v4.development_council()}
         if path=="/api/academy/diary":
             return {"items":v4.diary()}
+        cognition=engine.v5
+        growth=engine.growth
+        if path=="/api/v5/permissions":
+            return {"items":cognition.permissions(),"cloud_embeddings_ready":cognition.embed.ready()}
+        if path=="/api/v5/episodes":
+            return {"items":cognition.episodes()}
+        if path=="/api/v5/episode/preview":
+            return cognition.episode_preview(params.get("session_id",[""])[0])
+        if path=="/api/v5/causal":
+            return {"items":cognition.causal_links()}
+        if path=="/api/v5/evidence":
+            return cognition.evidence_search(params.get("q",[""])[0])
+        if path=="/api/v5/hybrid":
+            return cognition.hybrid_search(params.get("q",[""])[0])
+        if path=="/api/v5/reason":
+            return cognition.reasoning_plan(params.get("q",[""])[0])
+        if path=="/api/v5/growth/tasks":
+            return {"items":growth.tasks()}
+        if path=="/api/v5/growth/reviews":
+            return {"items":growth.reviews()}
+        if path=="/api/v5/growth/plan":
+            return {"items":growth.plan()}
+        if path=="/api/v5/growth/diary":
+            return {"items":growth.evolution_diary()}
+        if path=="/api/v5/skill/transfers":
+            return {"items":growth.transfers()}
         raise StoreError("Unknown API route")
 
     def post(self,path:str,body:dict)->dict|list:
@@ -154,7 +182,10 @@ class AppHandler(BaseHTTPRequestHandler):
         if path=="/api/memory":
             return store.add_memory(body.get("kind",""),body.get("text",""),body.get("confirmed",False))
         if path=="/api/memory/delete":
-            return {"deleted":store.delete_memory(body.get("id",""))}
+            deleted=store.delete_memory(body.get("id",""))
+            if deleted:
+                engine.v5.prune_orphan_embeddings()
+            return {"deleted":deleted}
         if path=="/api/timeline/delete":
             return {"deleted":store.delete_event(body.get("id",""))}
         if path=="/api/feedback/delete":
@@ -193,7 +224,43 @@ class AppHandler(BaseHTTPRequestHandler):
                     body.get("baseline"),body.get("trial"),body.get("evidence",""),
                     body.get("confirmed",False))
         if path=="/api/academy/strategy/action":
-            return v4.strategy_action(body.get("id",""),body.get("action",""))
+            return engine.growth.guard_strategy_change(body.get("id",""),body.get("action",""))
+        cognition=engine.v5
+        growth=engine.growth
+        if path=="/api/v5/permissions":
+            return cognition.set_permission(body.get("name",""),body.get("enabled"),
+                                            body.get("confirmed",False))
+        if path=="/api/v5/episode/save":
+            return cognition.save_episode(body.get("session_id",""),body.get("confirmed",False))
+        if path=="/api/v5/episode/delete":
+            return {"deleted":cognition.delete_episode(body.get("id",""),body.get("confirmed",False))}
+        if path=="/api/v5/causal":
+            return cognition.causal_link(body.get("cause_id",""),body.get("effect_id",""),
+                                          body.get("evidence",""),body.get("confirmed",False))
+        if path=="/api/v5/embeddings/index":
+            return cognition.index_memories(body.get("confirmed",False),body.get("limit",5))
+        if path=="/api/v5/embeddings/search":
+            return {"items":cognition.vector_search(body.get("query",""),
+                          body.get("confirmed",False),body.get("limit",6))}
+        if path=="/api/v5/hybrid":
+            return cognition.hybrid_search(body.get("query",""),body.get("limit",8),
+                                           body.get("use_cloud",False),
+                                           body.get("confirmed",False))
+        if path=="/api/v5/growth/enqueue":
+            return growth.enqueue(body.get("kind",""),body.get("confirmed",False))
+        if path=="/api/v5/growth/run":
+            return growth.run_once()
+        if path=="/api/v5/growth/review":
+            return growth.review_action(body.get("id",""),body.get("action",""))
+        if path=="/api/v5/strategy/decision":
+            return growth.guard_strategy_change(body.get("id",""),body.get("action",""))
+        if path=="/api/v5/strategy/compare":
+            return growth.compare_strategy(body.get("id",""))
+        if path=="/api/v5/skill/transfer":
+            return growth.propose_transfer(body.get("from_skill",""),body.get("to_skill",""),
+                                            body.get("strategy_id",""),body.get("rationale",""))
+        if path=="/api/v5/skill/transfer/decision":
+            return growth.transfer_action(body.get("id",""),body.get("action",""))
         raise StoreError("Unknown API route")
 
 
@@ -207,12 +274,20 @@ def serve(host="127.0.0.1",port:int|None=None,store:SoulStore|None=None,cloud=No
     server.store=store or SoulStore()
     server.engine=SoryukaEngine(server.store,cloud)
     server.daemon_threads=True
+    server.growth_loop=BackgroundLearningLoop(server.engine.growth)
+    server.growth_loop.start()
     print("Soryuka API listening at 127.0.0.1:"+str(server.server_port),flush=True)
     return server
 
 
 if __name__=="__main__":
+    service=None
     try:
-        serve().serve_forever(poll_interval=0.2)
+        service=serve()
+        service.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
         pass
+    finally:
+        if service is not None:
+            service.growth_loop.stop()
+            service.server_close()

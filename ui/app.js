@@ -1,7 +1,7 @@
-// Soryuka 4.0 — TypeScript-compatible browser source, checked-in JS build (no dependencies).
+// Soryuka 5.0 — TypeScript-compatible browser source, checked-in JS build (no dependencies).
 // App and API data remain on loopback. Never put the Cloud.ru key in client code.
 const byId = id => document.getElementById(id);
-const state = {session:localStorage.getItem('soryuka.session')||'',emotion:'serene',gesture:'still',busy:false,memoryNames:new Map()};
+const state = {session:localStorage.getItem('soryuka.session')||'',emotion:'serene',gesture:'still',busy:false,memoryNames:new Map(),episodePreview:false};
 const $messages=byId('messages');
 const $input=byId('message');
 
@@ -50,13 +50,14 @@ function renderItems(id,items,render){
   items.forEach(row=>root.append(render(row)));
 }
 async function loadSessions(){
-  if(!state.session){const x=await api('/session',{});state.session=x.session_id;localStorage.setItem('soryuka.session',state.session);}
+  if(!state.session){const x=await api('/session',{});state.session=x.session_id;state.episodePreview=false;localStorage.setItem('soryuka.session',state.session);}
   try{
     const result=await api('/history?session_id='+encodeURIComponent(state.session));
     if(result.items.length){$messages.replaceChildren();result.items.forEach(x=>message(x.role,x.body));}
     else showEmpty();
   }catch{
     state.session=(await api('/session',{})).session_id;
+    state.episodePreview=false;
     localStorage.setItem('soryuka.session',state.session);
     showEmpty();
   }
@@ -71,6 +72,7 @@ async function sendMessage(event){
   try{
     const result=await api('/chat',{session_id:state.session,message:value,intent:byId('intent').value});
     message('assistant',result.answer);
+    showFactSuggestions(result.memory_suggestions||[]);
     state.emotion=result.avatar.emotion;state.gesture=result.avatar.gesture;
     byId('emotional-state').textContent=({serene:'Спокойствие',care:'Нежность',play:'Игривость',solemn:'Величие',focus:'Сосредоточенность',concern:'Внимание'})[state.emotion]||state.emotion;
     notify('Cloud.ru · Сорюка на связи');
@@ -157,7 +159,7 @@ function fillSelect(id,rows,renderLabel){
 }
 function populateV4Memories(rows){
   state.memoryNames=new Map(rows.map(x=>[x.id,x.body]));
-  for(const id of ['v4-link-a','v4-link-b','v4-review-id','v4-evidence-id']){
+  for(const id of ['v4-link-a','v4-link-b','v4-review-id','v4-evidence-id','v5-cause','v5-effect']){
     fillSelect(id,rows,x=>x.body.slice(0,90)+' · '+x.kind);
   }
 }
@@ -219,6 +221,8 @@ async function v4Assessments(){
 }
 async function v4Strategies(){
   const d=await api('/academy/strategies');
+  fillSelect('v5-transfer-strategy',d.items.filter(x=>x.status==='approved'),
+    x=>x.skill+' · '+x.name.slice(0,75));
   renderItems('v4-strategies',d.items,x=>{
     const actions=[];
     if(x.status==='proposed'){
@@ -280,6 +284,159 @@ function setupV4(){
   byId('v4-diary-refresh').addEventListener('click',()=>v4Diary().catch(e=>notify(e.message,true)));
 }
 
+
+function showFactSuggestions(items){
+  renderItems('v5-fact-suggestions',items,x=>textItem(x.text,
+    'Предложение, не сохранено. Сорюка не объявляет это установленным фактом.',[{
+    label:'Сохранить с моим разрешением',run:async()=>{
+      if(!confirm('Сохранить это личное утверждение в локальную память?'))return;
+      await api('/memory',{kind:x.kind,text:x.text,confirmed:true});
+      await loadMemories();
+      notify('Воспоминание сохранено с твоим разрешением');
+    }
+  }]));
+}
+async function v5Permissions(){
+  const r=await api('/v5/permissions');
+  byId('v5-background').checked=!!r.items.background_local;
+  byId('v5-capture').checked=!!r.items.fact_suggestions;
+  byId('v5-embedding').checked=!!r.items.cloud_embeddings;
+}
+async function v5EpisodePreview(){
+  if(!state.session)return;
+  const d=await api('/v5/episode/preview?session_id='+encodeURIComponent(state.session));
+  state.episodePreview=true;
+  renderItems('v5-episode',[d],x=>textItem(x.digest,
+    x.message_count+' сообщений · дословные фрагменты, не новая биография'));
+}
+async function v5Episodes(){
+  const d=await api('/v5/episodes');
+  renderItems('v5-episode-list',d.items.slice(0,15),x=>textItem(x.digest,
+    'Источник: разговор '+x.session_id+' · '+x.source_messages+' сообщений',[{
+    label:'Удалить сводку',run:async()=>{
+      if(!confirm('Удалить эту сохранённую сводку без восстановления?'))return;
+      await api('/v5/episode/delete',{id:x.id,confirmed:true});
+      await v5Episodes();
+    }
+  }]));
+}
+async function v5Causal(){
+  const d=await api('/v5/causal');
+  renderItems('v5-causal-links',d.items,x=>textItem(
+    (state.memoryNames.get(x.cause_id)||x.cause_id)+' → '+(state.memoryNames.get(x.effect_id)||x.effect_id),
+    'Источник обоснования (со слов хозяина): '+x.evidence_note));
+}
+async function v5Growth(){
+  const [tasks,reviews]=await Promise.all([api('/v5/growth/tasks'),api('/v5/growth/reviews')]);
+  renderItems('v5-growth-tasks',tasks.items.slice(0,18),
+    x=>textItem(x.kind+' · '+x.status,'Попыток: '+x.attempts+
+       (x.result_json?' · '+JSON.parse(x.result_json).count+' предложений':'')));
+  renderItems('v5-growth-proposals',reviews.items.filter(x=>x.status==='pending').slice(0,20),
+    x=>textItem(x.kind,JSON.stringify(x.candidate),[
+      {label:'Изучить позже',run:async()=>{await api('/v5/growth/review',{id:x.id,action:'accept'});await v5Growth();}},
+      {label:'Отклонить',run:async()=>{await api('/v5/growth/review',{id:x.id,action:'dismiss'});await v5Growth();}}
+    ]));
+}
+async function v5Plan(){
+  const [plan,diary]=await Promise.all([api('/v5/growth/plan'),api('/v5/growth/diary')]);
+  renderItems('v5-plan',plan.items,x=>textItem(x.kind,x.reason+' · '+x.status));
+  renderItems('v5-diary',diary.items.slice(0,20),x=>textItem(x.event,x.at));
+}
+async function v5Transfers(){
+  const d=await api('/v5/skill/transfers');
+  renderItems('v5-transfers',d.items.slice(0,20),x=>{
+    const actions=[];
+    if(x.status==='pending'){
+      actions.push({label:'Одобрить запись',run:async()=>{
+        await api('/v5/skill/transfer/decision',{id:x.id,action:'approve'});await v5Transfers();
+      }},{label:'Отклонить',run:async()=>{
+        await api('/v5/skill/transfer/decision',{id:x.id,action:'reject'});await v5Transfers();
+      }});
+    } else if(x.status==='approved'){
+      actions.push({label:'Отозвать',run:async()=>{
+        await api('/v5/skill/transfer/decision',{id:x.id,action:'revoke'});await v5Transfers();
+      }});
+    }
+    return textItem(x.from_skill+' → '+x.to_skill,
+      x.status+' · '+x.rationale+' · нет изменения облачной модели',actions);
+  });
+}
+function setupV5(){
+  byId('v5-save-permissions').addEventListener('click',async()=>{
+    if(!confirm('Сохранить разрешения? Включённый фон будет выполнять только локальные задания. Embeddings могут стоить денег при отдельном ручном запросе.'))return;
+    try{
+      const settings=[['background_local','v5-background'],['fact_suggestions','v5-capture'],
+                      ['cloud_embeddings','v5-embedding']];
+      for(const [name,id] of settings)
+        await api('/v5/permissions',{name,enabled:byId(id).checked,confirmed:true});
+      await v5Permissions();notify('Разрешения хозяина сохранены');
+    }catch(e){notify(e.message,true);}
+  });
+  byId('v5-episode-preview').addEventListener('click',()=>v5EpisodePreview().catch(e=>notify(e.message,true)));
+  byId('v5-episode-save').addEventListener('click',async()=>{
+    if(!state.episodePreview)return notify('Сначала прочитай сводку',true);
+    if(!confirm('Сохранить эту дословную сводку диалога локально?'))return;
+    try{
+      await api('/v5/episode/save',{session_id:state.session,confirmed:true});
+      state.episodePreview=false;await v5Episodes();notify('Сводка сохранена с источником');
+    }catch(e){notify(e.message,true);}
+  });
+  bindForm('v5-evidence-form',async()=>{
+    const q=byId('v5-question').value;
+    const [d,evidence]=await Promise.all([
+      api('/v5/reason?q='+encodeURIComponent(q)),
+      api('/v5/evidence?q='+encodeURIComponent(q))
+    ]);
+    const root=byId('v5-evidence');
+    renderItems('v5-evidence',d.questions,x=>textItem(x.question,
+      x.confidence_label+' · подтверждённых записей: '+x.evidence_count+
+      ' · источники: '+x.source_ids.join(', ')));
+    evidence.sources.forEach(x=>root.append(textItem(x.body,
+      'Источник '+x.id+' · '+x.provenance+' · переходов по связям: '+x.hop)));
+  });
+  bindForm('v5-causal-form',async()=>{
+    await api('/v5/causal',{cause_id:byId('v5-cause').value,
+      effect_id:byId('v5-effect').value,evidence:byId('v5-causal-evidence').value,
+      confirmed:byId('v5-causal-confirm').checked});
+    await v5Causal();
+  });
+  byId('v5-index-embeddings').addEventListener('click',async()=>{
+    if(!confirm('Выполнить до 2 Cloud.ru embeddings-запросов? Это может стоить денег. Продолжить?'))return;
+    try{
+      const d=await api('/v5/embeddings/index',{confirmed:true,limit:2});
+      notify('Индексировано: '+d.indexed+' · из кэша: '+d.cache_hits);
+    }catch(e){notify(e.message,true);}
+  });
+  bindForm('v5-vector-form',async()=>{
+    if(!confirm('Отправить запрос в Cloud.ru для смыслового поиска? Возможна оплата.'))return;
+    const d=await api('/v5/embeddings/search',{confirmed:true,query:byId('v5-vector-q').value});
+    renderItems('v5-vectors',d.items,x=>textItem(x.body,
+      'Сходство векторов: '+Math.round(x.score*100)+'% · не гарантия истинности'));
+  });
+  byId('v5-refresh-growth').addEventListener('click',()=>v5Growth().catch(e=>notify(e.message,true)));
+  byId('v5-seed-growth').addEventListener('click',async()=>{
+    if(!confirm('Поставить в очередь три локальные проверки? Они не отправляют данные в Cloud.ru.'))return;
+    try{
+      for(const kind of ['memory_review','learning_exercises','growth_recommendations'])
+        await api('/v5/growth/enqueue',{kind,confirmed:true});
+      await v5Growth();notify('Локальные задачи добавлены');
+    }catch(e){notify(e.message,true);}
+  });
+  byId('v5-run-growth').addEventListener('click',async()=>{
+    try{
+      const d=await api('/v5/growth/run',{});
+      await v5Growth();notify('Локальных заданий обработано: '+d.processed+' · '+d.status);
+    }catch(e){notify(e.message,true);}
+  });
+  byId('v5-plan-refresh').addEventListener('click',()=>v5Plan().catch(e=>notify(e.message,true)));
+  bindForm('v5-transfer-form',async()=>{
+    await api('/v5/skill/transfer',{from_skill:byId('v5-transfer-from').value,
+      to_skill:byId('v5-transfer-to').value,strategy_id:byId('v5-transfer-strategy').value,
+      rationale:byId('v5-transfer-rationale').value});
+    await v5Transfers();
+  });
+}
+
 function bindForm(id,handle){
   byId(id).addEventListener('submit',async event=>{
     event.preventDefault();const form=event.currentTarget;
@@ -294,7 +451,7 @@ function setupForms(){
   byId('chat-form').addEventListener('submit',sendMessage);
   $input.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();byId('chat-form').requestSubmit();}});
   byId('new-chat').addEventListener('click',async()=>{
-    try{state.session=(await api('/session',{})).session_id;localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
+    try{state.session=(await api('/session',{})).session_id;state.episodePreview=false;localStorage.setItem('soryuka.session',state.session);showEmpty();notify('Новый разговор');}catch(e){notify(e.message,true);}
   });
   byId('delete-chat').addEventListener('click',async()=>{
     if(!state.session||!confirm('Удалить весь текущий разговор без восстановления?'))return;
@@ -373,13 +530,13 @@ function canvasTails(){
   }requestAnimationFrame(draw);
 }
 async function start(){
-  setupForms();setupV4();canvasTails();
+  setupForms();setupV4();setupV5();canvasTails();
   try{
     const [health,profile]=await Promise.all([api('/health'),api('/profile')]);
     byId('status-dot').classList.toggle('online',health.configured);
     notify(health.configured?'Cloud.ru подключён':'Cloud.ru не настроен · см. README');
     await loadSessions();
-    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary(),v4Map(),v4Links(),v4Assessments(),v4Strategies()]);
+    await Promise.all([loadMemories(),loadGoals(),loadMetrics(),loadProposals(),loadTimeline(),loadDiary(),v4Map(),v4Links(),v4Assessments(),v4Strategies(),v5Permissions(),v5Episodes(),v5Causal(),v5Growth(),v5Plan(),v5Transfers()]);
   }catch(e){notify(e.message,true);}
 }
 start();
