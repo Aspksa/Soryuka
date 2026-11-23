@@ -219,7 +219,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     body.get("baseline"),body.get("trial"),body.get("evidence",""),
                     body.get("confirmed",False))
         if path=="/api/academy/strategy/action":
-            return v4.strategy_action(body.get("id",""),body.get("action",""))
+            return engine.growth.guard_strategy_change(body.get("id",""),body.get("action",""))
         cognition=engine.v5
         growth=engine.growth
         if path=="/api/v5/permissions":
