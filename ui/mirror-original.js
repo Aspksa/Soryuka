@@ -8,6 +8,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {graphFingerprint,seedStablePositions,relatedNodes,verifiedEventTargets,
+  qualityFromFps,collisionRadius} from './graph-v2.js';
 import {
   GRAPHICS_DEFAULTS, GRAPHICS_STORAGE_KEY, normalizeGraphics,
   readGraphics, saveGraphics, resetGraphics
@@ -23,6 +25,13 @@ let graphics=readGraphics(graphicsStorage);
 let animationClock=0;
 let previousFrame=0;
 let physicsProgress=0;
+let qualityLevel='high';
+let frameCounter=0;
+let performanceWindow=performance.now();
+let renderFps=60;
+let lastQualityUpdate=0;
+let renderReady=false;
+let renderDisabled=false;
 
 /** Adapt Soryuka's actual SQLite graph to the Soryuka 3D renderer.
  * No fabricated memories or private Cloud.ru keys in browser code.
@@ -107,6 +116,16 @@ renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setClearColor(0x0a0a0f);
 container.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost',event=>{
+  event.preventDefault();
+  renderDisabled=true;
+  window.dispatchEvent(new CustomEvent('soryuka:renderer-failed',{
+    detail:'Видеокарта потеряла контекст WebGL. Проверь драйвер; при восстановлении страница перезагрузится.'
+  }));
+});
+renderer.domElement.addEventListener('webglcontextrestored',()=>{
+  window.location.reload();
+});
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x0a0a0f, graphics.fog);
@@ -267,6 +286,43 @@ function createGlowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 const glowTexture = createGlowTexture();
+
+// Decorative spatial mist. These are atmospheric particles, never memory events.
+// Three.js FogExp2 still defines the real scene depth fog controlled by the slider.
+const mistLayers=[];
+for(let layer=0;layer<3;layer++){
+  const count=[180,120,75][layer];
+  const positions=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    const angle=i*2.39996323+layer;
+    const radial=90+Math.sqrt(i/count)*(340+layer*140);
+    positions[i*3]=Math.cos(angle)*radial;
+    positions[i*3+1]=Math.sin(angle*0.8)*(55+layer*50);
+    positions[i*3+2]=Math.sin(angle)*radial;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  const mat=new THREE.PointsMaterial({
+    map:glowTexture,transparent:true,opacity:0.055+layer*0.018,
+    color:[0x49668f,0x7f89b9,0x88715f][layer],
+    size:16+layer*12,sizeAttenuation:true,depthWrite:false,
+    blending:THREE.AdditiveBlending
+  });
+  const points=new THREE.Points(geo,mat);
+  points.rotation.y=layer*0.8;
+  scene.add(points);
+  mistLayers.push(points);
+}
+function updateMist(){
+  const amount=graphics.fog/0.003;
+  for(let i=0;i<mistLayers.length;i++){
+    const cloud=mistLayers[i];
+    cloud.visible=amount>0.02&&(qualityLevel!=='low'||i===0);
+    cloud.material.opacity=(0.05+i*0.025)*amount;
+    cloud.rotation.y+=0.000035*(i+1)*graphics.speed;
+  }
+}
+
 
 function makeLabel(text, hexColor) {
   const canvas = document.createElement('canvas');
