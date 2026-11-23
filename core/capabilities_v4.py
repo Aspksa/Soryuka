@@ -179,6 +179,16 @@ class SoulCapabilities:
                 self.store._audit(db,"memory_link_removed",a,None,json.dumps({"other_id":b,"relation":relation}))
         return bool(cur.rowcount)
 
+    def confirmed_memories(self, limit: int = 8) -> list[dict]:
+        """Only owner-confirmed, non-disputed memories may enter the LLM context."""
+        with self.store.db() as db:
+            rows=db.execute("""SELECT m.id,m.kind,m.body,m.created_at FROM memories m
+                LEFT JOIN memory_provenance p ON p.memory_id=m.id
+                WHERE COALESCE(p.status,'owner_confirmed')='owner_confirmed'
+                ORDER BY m.created_at DESC,m.id DESC LIMIT ?""",
+                (max(1,min(int(limit),30)),)).fetchall()
+        return [dict(x) for x in rows]
+
     def memory_index(self, query: str, limit: int = 12) -> list[dict]:
         text = clean(query, 250)
         toks = _tokens(text, without_negation=True)
@@ -248,8 +258,9 @@ class SoulCapabilities:
         maxn=max(1,min(int(limit),150))
         with self.store.db() as db:
             rows=db.execute("""
-              SELECT id,kind AS category,body,created_at,0 AS fiction,'owner_confirmed' AS source
-              FROM memories
+              SELECT m.id,m.kind AS category,m.body,m.created_at,0 AS fiction,
+                     COALESCE(p.status,'owner_confirmed') AS source
+              FROM memories m LEFT JOIN memory_provenance p ON p.memory_id=m.id
               UNION ALL
               SELECT id,'story_event' AS category,body,created_at,fiction,
                      CASE WHEN fiction=1 THEN 'approved_fiction' ELSE 'owner_confirmed_real_event' END AS source
@@ -260,8 +271,11 @@ class SoulCapabilities:
     def relationship_context(self, limit: int = 8) -> dict:
         """Read-only opt-in moments, traditions and clearly labeled fiction."""
         with self.store.db() as db:
-            moments=db.execute("""SELECT id,kind,body FROM memories WHERE kind IN ('moment','tradition')
-                ORDER BY created_at DESC,id DESC LIMIT ?""",(max(1,min(limit,12)),)).fetchall()
+            moments=db.execute("""SELECT m.id,m.kind,m.body FROM memories m
+                LEFT JOIN memory_provenance p ON p.memory_id=m.id
+                WHERE m.kind IN ('moment','tradition')
+                  AND COALESCE(p.status,'owner_confirmed')='owner_confirmed'
+                ORDER BY m.created_at DESC,m.id DESC LIMIT ?""",(max(1,min(limit,12)),)).fetchall()
             fiction=db.execute("""SELECT id,body FROM story_events WHERE fiction=1
                 ORDER BY created_at DESC,id DESC LIMIT ?""",(max(1,min(limit,12)),)).fetchall()
         return {"approved_memories":[dict(x) for x in moments],
