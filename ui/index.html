@@ -210,6 +210,18 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
  .feed-header{font-size:10px;padding:10px}
 }
 #soryuka-engine-retry{background:#3a3021;color:#efd2a1;border:1px solid #8b7147;border-radius:6px;padding:9px 12px;cursor:pointer;margin-right:12px}
+
+/* Temporary seal avatar: reuses the existing chat page, no second chat implementation. */
+.soryuka-avatar{pointer-events:auto;display:grid;place-items:center;flex:none;width:52px;height:52px;border-radius:50%;border:1px solid #b8995e;background:radial-gradient(circle at 35% 25%,#403322,#100e12 75%);color:#f2d59a;font:30px serif;cursor:pointer;box-shadow:0 0 20px #b88a3933}
+.soryuka-avatar:hover,.soryuka-avatar:focus-visible{outline:2px solid #e9c88c;outline-offset:3px}
+.soryuka-brand{display:flex;align-items:center;gap:12px}
+.soryuka-chat-overlay[hidden]{display:none}
+.soryuka-chat-overlay{position:fixed;inset:0;z-index:60;background:#050509b8;display:flex;justify-content:flex-end}
+.soryuka-chat-panel{width:min(640px,100vw);height:100dvh;background:#080809;display:flex;flex-direction:column;box-shadow:-20px 0 70px #000b}
+.soryuka-chat-toolbar{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;color:#e9c88c;border-bottom:1px solid #30281e}
+.soryuka-chat-toolbar button{background:transparent;border:1px solid #8c754e;color:#e9c88c;border-radius:7px;padding:6px 12px;cursor:pointer}
+.soryuka-chat-panel iframe{border:0;flex:1;width:100%;min-height:0}
+@media(max-width:560px){.soryuka-avatar{width:42px;height:42px;font-size:24px}.soryuka-brand{gap:8px}}
 </style>
 </head>
 <body>
@@ -286,6 +298,12 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <a href="/console.html">Перейти в чат Сорюки</a></div>
 
 <div id="canvas-container"></div>
+<div class="soryuka-chat-overlay" id="soryuka-chat-overlay" hidden>
+  <section class="soryuka-chat-panel" role="dialog" aria-modal="true" aria-label="Чат Сорюки">
+    <div class="soryuka-chat-toolbar"><strong>Сорюка · чат</strong><button id="soryuka-chat-close" type="button" aria-label="Закрыть чат">Закрыть ×</button></div>
+    <iframe id="soryuka-chat-frame" title="Чат Сорюки" data-src="/console.html"></iframe>
+  </section>
+</div>
 
 <div class="activity-feed">
   <div class="feed-header">
@@ -311,6 +329,33 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 }
 </script>
 
+<script>
+(function(){
+  const avatar=document.getElementById('soryuka-avatar');
+  const overlay=document.getElementById('soryuka-chat-overlay');
+  const close=document.getElementById('soryuka-chat-close');
+  const frame=document.getElementById('soryuka-chat-frame');
+  let lastFocus=null;
+  function toggle(open){
+    overlay.hidden=!open;
+    avatar.setAttribute('aria-expanded',String(open));
+    if(open){
+      lastFocus=document.activeElement;
+      if(!frame.getAttribute('src'))frame.setAttribute('src',frame.dataset.src);
+      close.focus();
+    }else (lastFocus||avatar).focus();
+  }
+  avatar.addEventListener('click',()=>toggle(true));
+  close.addEventListener('click',()=>toggle(false));
+  overlay.addEventListener('click',event=>{if(event.target===overlay)toggle(false)});
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!overlay.hidden)toggle(false);
+    if(event.key==='Tab'&&!overlay.hidden&&document.activeElement===close){
+      event.preventDefault();frame.focus();
+    }
+  });
+})();
+</script>
 <script src="/mirror-bootstrap.js"></script>
 <script type="module" src="/mirror-original.js"></script>
 </body>
