@@ -168,6 +168,26 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(len(recovered.history(sid)),2)
 
 
+    def test_recommendations_require_real_low_skill_scores(self):
+        self.assertEqual(self.store.recommend_goals(),[])
+        self.store.add_feedback("языки",2,"Неправильный тон")
+        self.assertEqual(self.store.recommend_goals(),[])
+        self.store.add_feedback("языки",3,"Недостаточно точно")
+        recommendations=self.store.recommend_goals()
+        self.assertEqual(len(recommendations),1)
+        self.assertEqual(recommendations[0]["skill"],"языки")
+        # Read-only suggestions cannot create goals without the owner's action.
+        self.assertEqual(self.store.goals(),[])
+        row=self.store.propose_goal("языки",recommendations[0]["title"],recommendations[0]["criterion"])
+        self.assertEqual(self.store.recommend_goals(),[])
+        self.assertEqual(self.store.goals()[0]["status"],"proposed")
+
+    def test_high_ratings_do_not_invent_a_learning_problem(self):
+        self.store.add_feedback("программирование",5,"Хорошая работа")
+        self.store.add_feedback("программирование",4,"Всё верно")
+        self.assertEqual(self.store.recommend_goals(),[])
+
+
 class EngineTests(unittest.TestCase):
     def setUp(self):
         self.dir=tempfile.TemporaryDirectory()
