@@ -160,6 +160,19 @@ class NodeProxyTests(unittest.TestCase):
             sock.sendall(req.encode("ascii"))
             self.assertIn(b"403 Forbidden",sock.recv(1024))
 
+    def test_graphics_settings_survive_through_existing_node_proxy(self):
+        status,payload,_=self.request("/api/mirror/settings")
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(payload)["source"],"defaults")
+        custom={"fog":0.0015,"light":1.6,"speed":0.7}
+        status,payload,_=self.request("/api/mirror/settings",{"settings":custom})
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(payload)["settings"],custom)
+        status,payload,_=self.request("/api/mirror/settings")
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(payload)["settings"],custom)
+        self.assertNotIn(b"test-proxy-token",payload)
+
     def test_chat_proxy_keeps_server_token_off_browser(self):
         code,body,_=self.request("/api/session",{})
         self.assertEqual(code,200)
