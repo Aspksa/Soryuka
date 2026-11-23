@@ -280,6 +280,21 @@ class CognitiveTests(unittest.TestCase):
         self.assertIn("reasoning_review",result)
         self.assertEqual(engine.profile()["v5_selected_features"],32)
 
+    def test_chat_includes_bounded_approved_multi_hop_source_text(self):
+        one=self.mem("Думаю о чайной церемонии")
+        two=self.mem("Традиция пить зелёный чай")
+        self.cog.cap.link(one["id"],two["id"],"related",True)
+        cloud=FakeCloud()
+        engine=SoryukaEngine(self.store,cloud)
+        engine.chat("чайной",intent="greeting")
+        sys_prompt=cloud.calls[-1][0]["content"]
+        self.assertIn("evidence_sources",sys_prompt)
+        self.assertIn("Традиция пить зелёный чай",sys_prompt)
+        self.cog.cap.set_provenance(two["id"],"owner_disputed","",True)
+        engine.chat("чайной",intent="greeting")
+        sys_prompt=cloud.calls[-1][0]["content"]
+        self.assertNotIn("Традиция пить зелёный чай",sys_prompt)
+
     def test_canon_files_never_mutate(self):
         path=ROOT/"character"/"soryuka.json"
         before=path.read_bytes()
