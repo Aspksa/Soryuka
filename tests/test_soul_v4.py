@@ -225,6 +225,24 @@ class LocalCapabilitiesTests(unittest.TestCase):
         self.assertTrue(any(x["action"]=="goal_approved" for x in d))
         self.assertFalse(any("question" in x for x in d))
 
+    def test_disputed_memories_cannot_enter_persona_prompt(self):
+        contested=self.memory("Я люблю кофе со льдом",kind="preference")
+        self.v4.set_provenance(contested["id"],"owner_disputed","",True)
+        trusted=self.memory("Я люблю зеленый чай",kind="preference")
+        engine=SoryukaEngine(self.store,FakeCloud())
+        cloud=engine.cloud
+        engine.chat("Что я люблю пить?",intent="greeting")
+        prompt=cloud.calls[-1][0]["content"]
+        self.assertIn("Я люблю зеленый чай",prompt)
+        self.assertNotIn("Я люблю кофе со льдом",prompt)
+        self.assertEqual(len(self.v4.confirmed_memories()),1)
+        self.assertTrue(any(row["id"]==contested["id"] for row in self.v4.memory_index("кофе")))
+
+    def test_disputed_traditions_are_not_in_relationship_context(self):
+        item=self.memory("Сомнительная традиция",kind="tradition")
+        self.v4.set_provenance(item["id"],"source_supplied","Пользователь указал ссылку",True)
+        self.assertEqual(self.v4.relationship_context()["approved_memories"],[])
+
     def test_chat_uses_relevant_memory_and_stays_same_personality(self):
         self.memory("Люблю белый чай",kind="preference")
         cloud=FakeCloud()
@@ -335,6 +353,8 @@ class V4UIContractTests(unittest.TestCase):
                   "v4-map-refresh","v4-skill-map","v4-diary"]
         for item in required:self.assertIn('id="'+item+'"',html)
         self.assertIn("setupV4();",src)
+        self.assertIn("const form=event.currentTarget;",src)
+        self.assertIn("form.reset();",src)
 
 
 if __name__=="__main__":unittest.main()
