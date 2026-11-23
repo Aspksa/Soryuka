@@ -7,6 +7,7 @@ Activity is derived from existing audit and actual chat messages, not fabricated
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from datetime import datetime, timezone
 
 from .soul_store import SoulStore, StoreError
@@ -52,6 +53,28 @@ def build_graph(store: SoulStore) -> dict:
             add(groups[category],label,category,"cluster",9,"Категория локальных данных")
             edge(ROOT_ID,groups[category],"category")
         return groups[category]
+
+    # Structural category hubs are schema, never invented memories.
+    for category in CATEGORIES:
+        group(category["id"])
+    # Show the real protected personality files as core nodes, just as the reference
+    # highlights real SOUL/IDENTITY files. No contents are exposed or fabricated.
+    character_dir=Path(__file__).resolve().parents[1]/"character"
+    canon=[
+        ("soryuka.json","Легенда Сорюки"),
+        ("personality.json","Ядро личности"),
+        ("living_personality_v2.json","Личность 2.0"),
+        ("living_personality_v3.json","Сердце 3.0"),
+        ("living_personality_v4.json","Память 4.0"),
+        ("living_personality_v5.json","Развитие 5.0"),
+        ("SORYUKA_INSTRUCTIONS.md","Правила поведения"),
+    ]
+    for filename,label in canon:
+        if (character_dir/filename).is_file():
+            uid="canon:"+filename
+            add(uid,label,"core","system",5.5,
+                "Защищённый файл: character/"+filename,"real_file")
+            edge(ROOT_ID,uid,"canon")
 
     with store.db() as db:
         for row in db.execute("""
@@ -147,7 +170,7 @@ def build_graph(store: SoulStore) -> dict:
 
     counts={k:0 for k in COLORS}
     for row in nodes:
-        if row["kind"] not in ("cluster","character"):
+        if row["kind"] not in ("cluster","character","system"):
             counts[row["category"]]+=1
     return {"nodes":nodes,"links":links,"categories":CATEGORIES,
             "stats":{"nodes":len(nodes),"links":len(links),"items":sum(counts.values()),
