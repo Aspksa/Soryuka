@@ -53,6 +53,8 @@ class GrowthV5:
         self.store=store
         self.cognition=cognition or CognitiveV5(store)
         self.cap=self.cognition.cap
+        # Prevent concurrent manual/API and background execution on this worker.
+        self._run_lock=threading.Lock()
         with store.db() as c:
             c.executescript(DDL)
 
@@ -169,6 +171,14 @@ class GrowthV5:
         raise StoreError("Unknown task kind")
 
     def run_once(self,max_tasks:int=2,max_seconds:float=8)->dict:
+        if not self._run_lock.acquire(blocking=False):
+            return {"processed":0,"status":"already_running","network_calls":0}
+        try:
+            return self._run_once_locked(max_tasks,max_seconds)
+        finally:
+            self._run_lock.release()
+
+    def _run_once_locked(self,max_tasks:int=2,max_seconds:float=8)->dict:
         """Bounded work; safe to call from tests and loopback API. No LLM calls."""
         if not self.cognition.permission("background_local"):
             return {"processed":0,"status":"disabled","network_calls":0}
