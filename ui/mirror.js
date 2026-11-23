@@ -1,5 +1,4 @@
-// Soryuka Memory Mirror: original dependency-free 3D projection inspired by
-// https://github.com/gnufoo/agent-mirror (conceptual reference, no source copied).
+// Archived Soryuka memory-map projection: dependency-free 2D Canvas implementation.
 // All graph nodes, links and activity originate in local Soryuka SQLite.
 // No CDN, no WebSocket dependency, no invented AI internal thoughts.
 'use strict';
