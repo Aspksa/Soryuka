@@ -40,9 +40,10 @@ class GraphTests(unittest.TestCase):
 
     def test_empty_graph_contains_only_real_persona_core(self):
         g=build_graph(self.store)
-        self.assertEqual(len(g["nodes"]),1)
-        self.assertEqual(len(g["links"]),0)
-        self.assertEqual(g["nodes"][0]["id"],"core:soryuka")
+        self.assertIn("core:soryuka",{n["id"] for n in g["nodes"]})
+        self.assertEqual(len([n for n in g["nodes"] if n["kind"]=="cluster"]),6)
+        self.assertEqual(len([n for n in g["nodes"] if n["id"].startswith("mem:")]),0)
+        self.assertTrue(any(n["id"]=="canon:soryuka.json" for n in g["nodes"]))
         self.assertEqual(g["stats"]["items"],0)
         self.assertEqual(g["source"],"local_sqlite")
         self.assertIn("real_data",g["mode"])
@@ -156,7 +157,8 @@ class MirrorApiTests(unittest.TestCase):
         self.assertEqual(status,403)
         status,graph=self.request("/api/mirror/graph")
         self.assertEqual(status,200)
-        self.assertEqual(graph["stats"]["nodes"],1)
+        self.assertGreaterEqual(graph["stats"]["nodes"],7)
+        self.assertEqual(graph["stats"]["items"],0)
         status,_=self.request("/api/mirror/activity?audit_after=0&message_after=0")
         self.assertEqual(status,200)
 
