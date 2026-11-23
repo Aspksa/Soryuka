@@ -119,4 +119,4 @@ if __name__ == "__main__":
         "features": len(verified["v2"]["features"]),
         "tails": verified["character"]["appearance"]["tail_count"],
         "default_style": select_style(),
-    }, ensure_ascii=False, indent=2))
+    }, ensure_ascii=True, indent=2))
