@@ -282,9 +282,10 @@ function setupV4(){
 
 function bindForm(id,handle){
   byId(id).addEventListener('submit',async event=>{
-    event.preventDefault();const btn=event.currentTarget.querySelector('button[type=submit]');
+    event.preventDefault();const form=event.currentTarget;
+    const btn=form.querySelector('button[type=submit]');
     btn.disabled=true;
-    try{await handle();event.currentTarget.reset();notify('Изменение сохранено локально');}
+    try{await handle();form.reset();notify('Изменение сохранено локально');}
     catch(e){notify(e.message,true);}
     finally{btn.disabled=false;}
   });
