@@ -101,9 +101,16 @@ class NodeProxyTests(unittest.TestCase):
     def test_mirror_static_assets_and_legacy_console(self):
         for route,marker in [("/",b"canvas-container"),("/console.html",b"chat-form"),
                              ("/mirror-original.js",b"THREE.FogExp2"),
+                             ("/graph-v2.js",b"graphFingerprint"),
+                             ("/mirror-bootstrap.js",b"soryuka:renderer-ready"),
                              ("/graphics-settings.js",b"GRAPHICS_STORAGE_KEY"),
                              ("/vendor/three.module.js",b"WebGLRenderer"),
                              ("/vendor/three-addons/controls/OrbitControls.js",b"OrbitControls"),
+                             ("/vendor/d3-quadtree.min.js",b"quadtree"),
+                             ("/vendor/d3-binarytree.min.js",b"binarytree"),
+                             ("/vendor/d3-octree.min.js",b"octree"),
+                             ("/vendor/d3-dispatch.min.js",b"dispatch"),
+                             ("/vendor/d3-timer.min.js",b"timer"),
                              ("/vendor/d3-force-3d.min.js",b"forceSimulation")]:
             status,body,headers=self.request(route)
             self.assertEqual(status,200,route)
@@ -112,6 +119,26 @@ class NodeProxyTests(unittest.TestCase):
         status,data,_=self.request("/api/mirror/graph")
         self.assertEqual(status,200)
         self.assertEqual(json.loads(data)["source"],"local_sqlite")
+
+    def test_d3_browser_bundle_routes_have_valid_javascript_mime(self):
+        html=self.request("/")[1].decode("utf-8")
+        names=("quadtree","binarytree","octree","dispatch","timer","force-3d")
+        positions=[]
+        for name in names:
+            route="/vendor/d3-"+name+".min.js"
+            code,body,headers=self.request(route)
+            self.assertEqual(code,200,route)
+            self.assertGreater(len(body),100,route)
+            self.assertTrue(headers["Content-Type"].startswith("text/javascript"),route)
+            self.assertEqual(headers["X-Content-Type-Options"],"nosniff",route)
+            self.assertIn(route,html)
+            positions.append(html.index(route))
+        self.assertEqual(positions,sorted(positions),"D3 scripts must be loaded before force simulation")
+
+    def test_retired_canvas_routes_are_not_exposed(self):
+        for route in ("/mirror.js","/mirror.css"):
+            code,_,_=self.request(route)
+            self.assertEqual(code,404,route)
 
     def test_websocket_streams_original_realtime_graph_without_exposing_secret(self):
         import base64

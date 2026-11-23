@@ -10,8 +10,7 @@ Source studied and ported:
 - [gnufoo/agent-mirror / index.html](https://github.com/gnufoo/agent-mirror/blob/main/index.html) — the original default **LIVE 3D** scene
 - [gnufoo/agent-mirror / README.md](https://github.com/gnufoo/agent-mirror/blob/main/README.md)
 
-The previous custom 2D Canvas projection is no longer the default. It remains
-as historical source code only. Do not confuse it with the new WebGL engine.
+The previous custom 2D Canvas projection was removed from the active tree after the WebGL port. It is available in Git history only. Do not confuse it with the current WebGL engine.
 
 ## Реализованный 3D-движок Сорюки
 
@@ -96,7 +95,7 @@ memory, old panels and cached embeddings operate locally.
 
 - `/`: **трёхмерная карта памяти Сорюки** с её SQLite и графическими настройками.
 - `/console.html`: unchanged older chat/Academy/settings/personality UX.
-- `ui/mirror.js`: historical 2D imitation (not loaded on the new homepage).
+- `ui/mirror.js` and `ui/mirror.css`: retired 2D prototype, removed from the working tree; available in Git history.
 - `ui/mirror-original.js`: imported original Three.js scene with local adaptations.
 
 ## Privacy and truthful visualization
@@ -137,3 +136,9 @@ and wrong-origin WS connections are refused.
 **Limitation:** CI checks code/HTTP transport but does not visually judge the
 rendering on a user's GPU. For final visual QA, launch Soryuka on Windows
 and inspect the animated graph in a Chromium-based browser.
+
+## Browser and D3 dependency verification
+
+The d3-force-3d UMD bundle requires locally served D3 quadtree, binarytree, octree, dispatch and timer bundles, in that order before the main force script. All five URLs are mapped to installed pinned npm packages and served as `text/javascript` with `nosniff`; otherwise browsers refuse scripts and the live 3D scene cannot render. No CDN is used.
+
+Automated CI now includes a separate dev-only Playwright Chromium/WebGL smoke job on Windows and Linux with PNG screenshots; this checks actual canvas initialization, node click, SQLite graphics persistence, and the missing-WebGL fallback. WebGL software tests are not a replacement for physical GPU testing.

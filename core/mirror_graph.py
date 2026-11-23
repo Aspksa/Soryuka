@@ -197,7 +197,7 @@ EVENT_MAP={
   "strategy_approved": ("growth","Метод одобрен","growth"),
   "strategy_rolled_back": ("growth","Метод отозван","growth"),
   "feedback_received": ("learn","Оценка навыка","skill"),
-  "mirror_chat_started": ("read","Поиск памяти для ответа","memory"),
+  "mirror_chat_started": ("read","Подобраны источники контекста ответа","memory"),
   "mirror_chat_response": ("write","Ответ Сорюки получен","dialog"),
 }
 
@@ -218,11 +218,26 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
     for r in audits:
         kind,title,category=EVENT_MAP.get(r["action"],("update","Обновлена локальная запись","growth"))
         targets=[]
+        phase=None
+        context_kind=None
         subject=str(r["subject"])
         if r["action"] in ("mirror_chat_started","mirror_chat_response"):
             try:
                 obj=json.loads(r["after_json"] or "{}")
-                targets=["mem:"+str(x) for x in obj.get("memory_ids",[])[:8]]
+                memory_ids=obj.get("memory_ids",[])
+                if isinstance(memory_ids,list):
+                    targets=["mem:"+str(x) for x in memory_ids[:12] if isinstance(x,str)]
+                phase=obj.get("phase")
+                context_kind=obj.get("context_kind")
+            except (ValueError,TypeError):
+                pass
+        elif r["action"] in ("memory_link_confirmed","memory_link_removed"):
+            targets=["mem:"+subject]
+            try:
+                obj=json.loads(r["after_json"] or "{}")
+                other_id=obj.get("other_id")
+                if isinstance(other_id,str):
+                    targets.append("mem:"+other_id)
             except (ValueError,TypeError):
                 pass
         elif r["action"].startswith("memory_"):
@@ -237,6 +252,7 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
             targets=["episode:"+subject]
         items.append({"id":"a:"+str(r["id"]),"kind":kind,"title":title,
                       "category":category,"targets":targets,
+                      "phase":phase,"context_kind":context_kind,
                       "at":r["created_at"],"source":"sqlite_audit"})
     for r in messages:
         items.append({"id":"m:"+str(r["id"]),
@@ -245,7 +261,10 @@ def activity(store:SoulStore,audit_after:int=0,message_after:int=0,limit:int=60)
                       "category":"dialog",
                       "targets":["turn:"+str(r["id"]),"session:"+r["session_id"]],
                       "at":r["created_at"],"source":"sqlite_message"})
-    items.sort(key=lambda e:(e["at"], e["id"]))
+    # Audit IDs must be ordered NUMERICALLY: lexicographic a:10 < a:9 would
+    # invert real request_started / response_saved phases in the browser.
+    items.sort(key=lambda e:(e["at"], 0 if e["id"].startswith("a:") else 1,
+                             int(e["id"].split(":",1)[1])))
     return {"items":items[-160:],"cursor":{
                 "audit":audits[-1]["id"] if audits else a,
                 "message":messages[-1]["id"] if messages else m},
